@@ -1,0 +1,254 @@
+{% if mysql_no_instances %}
+<div class="alert alert-danger py-2 mb-0 d-flex align-items-center">
+    <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+    <span><strong>未检测到 MySQL 实例</strong>，请先在 dbmysql 扩展中注册至少一个实例</span>
+</div>
+{% endif %}
+{% if mysql_instances_status %}
+<div class="mysql-single-status py-2 px-3 bg-light border-bottom small" id="mysql-single-status">
+    <div class="d-flex align-items-center flex-wrap">
+        <div class="d-flex align-items-center">
+            <i class="fa-solid fa-heart-pulse text-muted mr-1"></i>
+            <span class="text-muted mr-2">实例可达性：</span>
+        </div>
+        <span class="mysql-status-badge d-inline-flex align-items-center px-2 py-1 rounded bg-secondary text-white"
+              id="mysql-status-badge">
+            <i class="fa-solid fa-spinner fa-spin mr-1"></i>
+            <span>等待探测...</span>
+        </span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ml-auto mysql-refresh-btn"
+                style="padding:1px 8px;font-size:.7rem;">
+            <i class="fa-solid fa-rotate"></i> 刷新 实例可达性
+        </button>
+    </div>
+</div>
+<script>
+window.__MYSQL_INSTANCES__ = {{ mysql_instances_status_json|safe }};
+</script>
+{% endif %}
+
+<style>
+.mysql-verify-status.success { color: #28a745; }
+.mysql-verify-status.fail { color: #dc3545; }
+.mysql-dbname-status.success { color: #28a745; }
+.mysql-dbname-status.fail { color: #dc3545; }
+.mysql-dbname-status.loading { color: #6c757d; }
+</style>
+
+<script>
+(function() {
+    var PK = 'db.mysql';
+    var URL_BASE = '{% url "project_mgmt:api_provider_capability" provider_key="db.mysql" capability="__CAP__" %}';
+    function capUrl(name) { return URL_BASE.replace('__CAP__', name); }
+
+    function findMysqlInstMeta(instId) {
+        if (!window.__MYSQL_INSTANCES__) return null;
+        for (var i = 0; i < window.__MYSQL_INSTANCES__.length; i++) {
+            if (String(window.__MYSQL_INSTANCES__[i].value) === String(instId)) {
+                return window.__MYSQL_INSTANCES__[i];
+            }
+        }
+        return null;
+    }
+
+    function renderMysqlBadge($badge, instId, reachable, errorMsg) {
+        var meta = findMysqlInstMeta(instId);
+        var host = '127.0.0.1', port = 3306, instName = instId;
+        if (meta) {
+            host = meta.host || host;
+            port = meta.port || port;
+            instName = meta.name || instName;
+        }
+        var label = instName + ' (' + host + ':' + port + ')';
+        var h = '<i class="fa-solid fa-circle-question mr-1"></i><span>' + label + '</span>';
+        if (reachable === true) {
+            $badge.removeClass('bg-secondary bg-danger bg-success').addClass('bg-success');
+            h = '<i class="fa-solid fa-circle-check mr-1"></i><span>' + label + ' 可达</span>';
+        } else if (reachable === false) {
+            $badge.removeClass('bg-secondary bg-success').addClass('bg-danger');
+            h = '<i class="fa-solid fa-circle-xmark mr-1"></i><span>' + label + ' 不可达';
+            if (errorMsg) h += ' (' + errorMsg + ')';
+            h += '</span>';
+            if (meta && meta.run_mode) {
+                h += '<button type="button" class="btn btn-sm btn-light ml-2 mysql-start-btn" ' +
+                     'data-instance-id="' + instId + '" data-run-mode="' + meta.run_mode + '"' +
+                     ' style="padding:1px 6px;font-size:.65rem;">' +
+                     '<i class="fa-solid fa-play"></i> 启动</button>';
+            }
+        }
+        $badge.html(h);
+    }
+
+    function pollMysqlSinglePort(instId, attempts) {
+        var $badge = $('#mysql-status-badge');
+        $badge.find('.mysql-start-btn').remove();
+        if (attempts <= 0) {
+            renderMysqlBadge($badge, instId, false, '启动后端口仍未就绪');
+            return;
+        }
+        $.post(capUrl('check_port'), { instance_id: instId }, function(resp) {
+            if (resp.ok && resp.data && resp.data.reachable) {
+                var $b = $('#mysql-status-badge');
+                renderMysqlBadge($b, instId, true, '');
+                return;
+            }
+            setTimeout(function() { pollMysqlSinglePort(instId, attempts - 1); }, 1500);
+        }).fail(function() {
+            setTimeout(function() { pollMysqlSinglePort(instId, attempts - 1); }, 1500);
+        });
+    }
+
+    function bindMysqlSingleStatus() {
+        var $card = $('#bindings-area .binding-form[data-provider-key="' + PK + '"]');
+        if (!$card.length) return null;
+        var $inst = $card.find('[name="config_db\\.mysql_instance_id"]');
+        var $badge = $('#mysql-status-badge');
+        if (!$badge.length) return null;
+
+        function detectPort() {
+            var instId = $inst.val();
+            if (!instId) return;
+            $badge.removeClass('bg-secondary bg-danger bg-success').addClass('bg-secondary');
+            $badge.html('<i class="fa-solid fa-spinner fa-spin mr-1"></i><span>探测中...</span>');
+            $.post(capUrl('check_port'), { instance_id: instId }, function(resp) {
+                if (resp.ok) {
+                    renderMysqlBadge($badge, instId, resp.data && resp.data.reachable, resp.data && resp.data.error);
+                } else {
+                    renderMysqlBadge($badge, instId, false, resp.error_msg || '探测失败');
+                }
+            }).fail(function() {
+                renderMysqlBadge($badge, instId, false, '网络错误');
+            });
+        }
+
+        $inst.off('change.mysqlPort').on('change.mysqlPort', detectPort);
+        $('#mysql-single-status').off('click', '.mysql-refresh-btn').on('click', '.mysql-refresh-btn', function() {
+            detectPort();
+        });
+        $('#mysql-single-status').off('click', '.mysql-start-btn').on('click', '.mysql-start-btn', function() {
+            var instId = $(this).data('instance-id');
+            $.post(capUrl('start_service'), { instance_id: instId }, function(resp) {
+                if (resp.ok) {
+                    renderMysqlBadge($('#mysql-status-badge'), instId, null, resp.data && resp.data.message);
+                    pollMysqlSinglePort(instId, 10);
+                } else {
+                    layui.layer.msg(resp.error_msg || '启动失败', {icon: 2});
+                }
+            }).fail(function() {
+                layui.layer.msg('启动请求失败', {icon: 2});
+            });
+        });
+
+        if ($inst.val()) detectPort();
+        return true;
+    }
+
+    function bindDbMysqlVerify() {
+        var $card = $('#bindings-area .binding-form[data-provider-key="' + PK + '"]');
+        if (!$card.length) return null;
+        if ($card.find('.mysql-verify-status').length) return null;
+
+        var $status = $('<div class="mysql-verify-status py-1 px-2 mt-2 small d-none"></div>');
+        $card.find('.form-group:last').after($status);
+
+        var $inst = $card.find('[name="config_db.mysql_instance_id"]');
+        var $user = $card.find('[name="config_db.mysql_user"]');
+        var $pass = $card.find('[name="config_db.mysql_password"]');
+
+        var t = null;
+        function doVerify() {
+            clearTimeout(t);
+            t = setTimeout(function() {
+                var instVal = $inst.val(), userVal = $user.val(), passVal = $pass.val();
+                $status.removeClass('success fail loading').addClass('loading d-none')
+                       .html('<i class="fa-solid fa-spinner fa-spin"></i> 验证中...').removeClass('d-none');
+                if (!instVal) {
+                    $status.removeClass('loading').addClass('fail')
+                           .html('<i class="fa-solid fa-circle-info mr-1"></i> 请选择 MySQL 实例');
+                    return;
+                }
+                $.post(capUrl('verify'), { instance_id: instVal, user: userVal, password: passVal }, function(resp) {
+                    if (resp.ok) {
+                        $status.removeClass('loading fail').addClass('success')
+                               .html('<i class="fa-solid fa-circle-check mr-1"></i> 连接验证通过');
+                    } else {
+                        $status.removeClass('loading success').addClass('fail')
+                               .html('<i class="fa-solid fa-triangle-exclamation mr-1"></i> ' + (resp.error_msg || '验证失败'));
+                    }
+                }).fail(function() {
+                    $status.removeClass('loading success').addClass('fail')
+                           .html('<i class="fa-solid fa-triangle-exclamation mr-1"></i> 网络错误');
+                });
+            }, 400);
+        }
+        $inst.off('change.mysqlV').on('change.mysqlV', doVerify);
+        $user.off('change.mysqlV').on('change.mysqlV', doVerify);
+        $pass.off('change.mysqlV').on('change.mysqlV', doVerify);
+
+        if ($inst.val()) doVerify();
+        return true;
+    }
+
+    function bindDbMysqlNameCheck() {
+        var $card = $('#bindings-area .binding-form[data-provider-key="' + PK + '"]');
+        if (!$card.length) return null;
+        if ($card.find('.mysql-dbname-status').length) return null;
+
+        var $dbName = $card.find('[name="config_db\\.mysql_db_name"]');
+        var $inst = $card.find('[name="config_db\\.mysql_instance_id"]');
+        var $user = $card.find('[name="config_db\\.mysql_user"]');
+        var $pass = $card.find('[name="config_db\\.mysql_password"]');
+
+        var $status = $('<div class="mysql-dbname-status small mt-1 d-none"></div>');
+        $dbName.after($status);
+
+        var t = null;
+        function doCheck() {
+            clearTimeout(t);
+            t = setTimeout(function() {
+                var dbVal = $dbName.val().trim();
+                if (!dbVal) { $dbName.removeClass('is-invalid is-valid'); $status.addClass('d-none'); return; }
+                var instVal = $inst.val(), userVal = $user.val(), passVal = $pass.val();
+                if (!instVal || !userVal) { $dbName.removeClass('is-invalid is-valid'); $status.addClass('d-none'); return; }
+
+                $status.removeClass('success fail loading').addClass('loading')
+                       .html('<i class="fa-solid fa-spinner fa-spin"></i> 检查中...').removeClass('d-none');
+                $.post(capUrl('check_db_exists'), {
+                    instance_id: instVal, user: userVal, password: passVal, db_name: dbVal
+                }, function(resp) {
+                    if (resp.ok && resp.data) {
+                        if (resp.data.exists) {
+                            $dbName.removeClass('is-valid').addClass('is-invalid');
+                            $status.removeClass('loading success').addClass('fail')
+                                   .html('<i class="fa-solid fa-triangle-exclamation mr-1"></i> 数据库 ' + dbVal + ' 已存在');
+                        } else {
+                            $dbName.removeClass('is-invalid').addClass('is-valid');
+                            $status.removeClass('loading fail').addClass('success')
+                                   .html('<i class="fa-solid fa-circle-check mr-1"></i> 数据库名可用');
+                        }
+                    } else {
+                        $dbName.removeClass('is-invalid is-valid');
+                        $status.removeClass('loading success fail').addClass('d-none');
+                    }
+                }).fail(function() {
+                    $dbName.removeClass('is-invalid is-valid');
+                    $status.removeClass('loading success fail').addClass('d-none');
+                });
+            }, 400);
+        }
+        $dbName.off('input.mysqlDbCheck').on('input.mysqlDbCheck', doCheck);
+        $inst.off('change.mysqlDbCheck').on('change.mysqlDbCheck', doCheck);
+        $user.off('change.mysqlDbCheck').on('change.mysqlDbCheck', doCheck);
+        $pass.off('change.mysqlDbCheck').on('change.mysqlDbCheck', doCheck);
+
+        if ($dbName.val()) doCheck();
+        return true;
+    }
+
+    $(function() {
+        bindMysqlSingleStatus();
+        bindDbMysqlVerify();
+        bindDbMysqlNameCheck();
+    });
+})();
+</script>

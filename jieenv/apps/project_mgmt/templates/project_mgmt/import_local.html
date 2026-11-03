@@ -1,0 +1,618 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<div class="container-fluid py-3">
+
+    <div class="card">
+        <div class="card-header">
+            <i class="fa-solid fa-file-import"></i>
+            <strong>① 选择项目目录</strong>
+        </div>
+        <div class="card-body">
+            <div class="input-group">
+                <input type="text" id="import-dir-path" class="form-control"
+                       placeholder="输入或选择已存在的项目目录路径">
+                <div class="input-group-append">
+                    <button type="button" class="btn btn-outline-primary" id="import-btn-pick-dir">
+                        <i class="fa-solid fa-folder-open"></i> 选择...
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="import-scan-result" class="card mt-3" style="display:none;">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center w-100">
+                <span><i class="fa-solid fa-list-check"></i> <strong>② 扫描结果</strong></span>
+                <span id="import-recommended-badge" class="badge"></span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row text-muted small mb-3 pb-2 border-bottom">
+                <div class="col-sm-3">
+                    <i class="fa-solid fa-hdd"></i>
+                    大小: <span id="import-dir-size">-</span> MB
+                </div>
+                <div class="col-sm-3">
+                    <i class="fa-solid fa-code-branch"></i>
+                    Git: <span id="import-is-git">-</span>
+                </div>
+                <div class="col-sm-3">
+                    <i class="fa-solid fa-database"></i>
+                    快照: <span id="import-has-snapshot">-</span>
+                </div>
+                <div class="col-sm-3">
+                    <i class="fa-solid fa-box"></i>
+                    识别: <span id="import-runtime-count">0</span> 个运行时
+                </div>
+            </div>
+
+            <div id="import-snapshot-panel" class="mb-3 p-2 border rounded bg-light" style="display:none;">
+                <div class="small">
+                    <i class="fa-solid fa-info-circle text-info"></i>
+                    检测到项目快照，将按快照恢复组件配置
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>项目名称</label>
+                <input type="text" id="import-project-name" class="form-control">
+                <small class="text-muted">留空则使用目录名</small>
+                <div class="small mt-1">
+                    <span class="text-muted">项目路径：</span>
+                    <code id="import-project-path">-</code>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="import-bindings-card" class="card mt-3" style="display:none;">
+        <div class="card-header">
+            <i class="fa-solid fa-sliders"></i>
+            <strong>③ 组件配置</strong>
+            <small class="text-muted ml-2">（扫描结果已预填，可手动编辑调整）</small>
+        </div>
+        <div class="card-body">
+            <div id="bindings-area"></div>
+            <div id="bindings-area-empty" class="text-center text-muted py-3" style="display:none;">
+                <i class="fa-solid fa-circle-check"></i> 此项目无组件配置
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between mt-3" id="import-footer">
+        <a href="{% url 'project_mgmt:index' %}" class="btn btn-secondary">
+            <i class="fa-solid fa-arrow-left"></i> 返回列表
+        </a>
+        <button type="button" class="btn btn-primary" id="import-btn-confirm">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <span class="btn-label">扫描项目</span>
+        </button>
+    </div>
+
+    <div id="import-progress" class="card mt-3 text-center py-4" style="display:none;">
+        <div class="spinner-border text-primary mx-auto" role="status"></div>
+        <div class="mt-2 text-muted" id="import-progress-text">正在扫描目录...</div>
+    </div>
+
+    <div id="import-result" class="card mt-3" style="display:none;"></div>
+
+    <div id="import-error" class="alert alert-danger mt-3" style="display:none;"></div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+var _importScanData = null;
+
+$('#import-btn-pick-dir').on('click', function() {
+    if (typeof JieDirPicker !== 'undefined') {
+        JieDirPicker.open({
+            initialPath: $('#import-dir-path').val() || 'D:/',
+            onSelect: function(path) {
+                $('#import-dir-path').val(path);
+            }
+        });
+    } else {
+        layui.layer.alert('目录选择器未加载，请手动输入路径');
+    }
+});
+
+function resetConfirmButton(doDisable) {
+    var $btn = $('#import-btn-confirm');
+    $btn.removeClass('btn-success btn-primary').addClass('btn-primary');
+    $btn.find('i').removeClass('fa-check').addClass('fa-magnifying-glass');
+    $btn.find('.btn-label').text('扫描项目');
+    $btn.prop('disabled', !!doDisable);
+}
+
+function setConfirmButtonToImport(doDisable) {
+    var $btn = $('#import-btn-confirm');
+    $btn.removeClass('btn-success btn-primary').addClass('btn-success');
+    $btn.find('i').removeClass('fa-magnifying-glass').addClass('fa-check');
+    $btn.find('.btn-label').text('确认导入');
+    $btn.prop('disabled', !!doDisable);
+}
+
+function doImportScan(dirPath) {
+    _importScanData = null;
+    $('#import-error').hide();
+    $('#import-scan-result').hide();
+    $('#import-bindings-card').hide();
+    $('#import-result').hide();
+    resetConfirmButton(true);
+    $('#import-progress-text').text('正在扫描目录...');
+    $('#import-progress').show();
+
+    $.post('{% url "project_mgmt:api_scan_dir" %}', {dir_path: dirPath}, function(resp) {
+        $('#import-progress').hide();
+        if (!resp.ok) {
+            $('#import-error').text(resp.error || '扫描失败').show();
+            resetConfirmButton(false);
+            return;
+        }
+        _importScanData = resp.scan;
+        renderScanResult(resp.scan);
+    }).fail(function() {
+        $('#import-progress').hide();
+        $('#import-error').text('请求失败').show();
+        resetConfirmButton(false);
+    });
+}
+
+function renderScanResult(scan) {
+    $('#import-dir-size').text(scan.dir_size_mb || '0');
+    $('#import-is-git').text(scan.is_git_repo ? '是' : '否');
+    $('#import-has-snapshot').text(scan.has_snapshot ? '有' : '无');
+
+    var runtimes = scan.detected_runtimes || [];
+    $('#import-runtime-count').text(runtimes.length);
+
+    var recommendedAction = scan.recommended_action || '';
+    var $badge = $('#import-recommended-badge');
+    var modeLabel = '';
+    $badge.removeClass('badge-success badge-warning badge-info badge-secondary badge-danger');
+
+    if (recommendedAction === 'restore_from_snapshot') {
+        $badge.addClass('badge-info').text('快照恢复模式');
+        modeLabel = 'snapshot_restore';
+    } else if (recommendedAction === 'import_with_components') {
+        $badge.addClass('badge-success').text('组件识别模式');
+        modeLabel = 'component_import';
+    } else if (recommendedAction === 'manual_setup') {
+        $badge.addClass('badge-warning').text('需手动添加组件');
+        modeLabel = 'component_import';
+    } else {
+        $badge.addClass('badge-secondary').text('无可用线索');
+        modeLabel = '';
+    }
+    _importScanData._mode = modeLabel;
+
+    if (scan.has_snapshot) {
+        $('#import-snapshot-panel').show();
+    } else {
+        $('#import-snapshot-panel').hide();
+    }
+
+    if (!$('#import-project-name').val()) {
+        var dirName = $('#import-dir-path').val().replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+        $('#import-project-name').val(dirName || '');
+    }
+
+    $('#import-project-path').text($('#import-dir-path').val() || '-');
+
+    $('#import-scan-result').show();
+
+    if (recommendedAction === 'empty_dir' || recommendedAction === 'invalid_dir' ||
+        (recommendedAction === 'manual_setup' && runtimes.length === 0 && !scan.has_snapshot)) {
+        $('#import-bindings-card').hide();
+        setConfirmButtonToImport(true);
+        $('#import-btn-confirm .btn-label').text('无法导入');
+        return;
+    }
+
+    loadBindingsForImport(modeLabel, scan);
+}
+
+function loadBindingsForImport(modeLabel, scan) {
+    var dirPath = ($('#import-dir-path').val() || '').trim();
+    var importMode = modeLabel || 'snapshot_restore';
+    var $bindingsArea = $('#bindings-area').empty();
+    $('#bindings-area-empty').hide();
+
+    setConfirmButtonToImport(true);
+    $('#import-btn-confirm .btn-label').text('加载组件中...');
+    $('#import-progress-text').text('正在加载组件配置...');
+    $('#import-progress').show();
+    $('#import-bindings-card').hide();
+
+    $.get('{% url "project_mgmt:api_binding_form" %}', {
+        import_mode: importMode,
+        dir_path: dirPath,
+        project_dir: dirPath,
+    }, function(resp) {
+        $('#import-progress').hide();
+        if (!resp.ok) {
+            $('#import-error').text(resp.error || '加载组件配置失败').show();
+            resetConfirmButton(false);
+            return;
+        }
+        if (!resp.html || !resp.html.trim() || resp.html.indexOf('此项目无组件配置') !== -1) {
+            $('#bindings-area-empty').show();
+            $('#bindings-area').hide();
+        } else {
+            $('#bindings-area').html(resp.html).show();
+            initBindingWidgets();
+        }
+        $('#import-bindings-card').show();
+        setConfirmButtonToImport(false);
+    }).fail(function() {
+        $('#import-progress').hide();
+        $('#import-error').text('请求失败').show();
+        resetConfirmButton(false);
+    });
+}
+
+function initBindingWidgets() {
+    bindDirWidgets();
+    bindToggleFields();
+    bindEditToggle();
+    refreshSummary();
+}
+
+function recomputeDirFull($box) {
+    var base = ($box.find('.dir-base-input').val() || '').replace(/\\/g, '/').replace(/[\\/]+$/, '');
+    var sub = ($box.find('.dir-sub-input').val() || '').replace(/[\\/]+$/, '').replace(/\\/g, '/');
+    var full = base && sub ? (base + '/' + sub) : '';
+    $box.find('.dir-full-path').val(full);
+    $box.find('.dir-full-preview').text(full ? ('完整路径: ' + full) : '');
+    var $card = $box.closest('.binding-form');
+    if ($card.length) refreshSummary($card);
+}
+
+function bindDirWidgets() {
+    $('#bindings-area .dir-with-base').each(function() {
+        var $box = $(this);
+        if ($box.data('bound')) return;
+        $box.data('bound', 1);
+
+        if (!$box.find('.dir-base-input').val()) {
+            var pd = ($('#import-dir-path').val() || '').trim();
+            if (pd) {
+                $box.find('.dir-base-input').val(pd.replace(/\\/g, '/'));
+            }
+        }
+        recomputeDirFull($box);
+
+        $box.on('input', '.dir-base-input', function() {
+            $box.data('base-manual', 1);
+            recomputeDirFull($box);
+        });
+        $box.on('input', '.dir-sub-input', function() {
+            recomputeDirFull($box);
+        });
+        $box.on('click', '.dir-pick-btn', function() {
+            if (typeof JieDirPicker !== 'undefined') {
+                JieDirPicker.open({
+                    initialPath: $box.find('.dir-base-input').val() || 'D:/',
+                    onSelect: function(path) {
+                        $box.data('base-manual', 1);
+                        $box.find('.dir-base-input').val(path.replace(/\\/g, '/'));
+                        recomputeDirFull($box);
+                    }
+                });
+            } else {
+                layui.layer.alert('目录选择器未加载');
+            }
+        });
+    });
+}
+
+function bindToggleFields() {
+    $('#bindings-area').off('change', 'input[data-is-toggle="1"]').on('change', 'input[data-is-toggle="1"]', function() {
+        var $cb = $(this);
+        var on = $cb.is(':checked');
+        var $grp = $cb.closest('.form-group');
+        var targets = ($grp.data('toggle-fields') || '').split(',').filter(Boolean);
+        var $card = $cb.closest('.binding-form');
+        for (var i = 0; i < targets.length; i++) {
+            var $f = $card.find('[data-field-key="' + targets[i] + '"]');
+            if (on) {
+                $f.show();
+                $f.find('input, select, textarea').prop('disabled', false);
+            } else {
+                $f.hide();
+                $f.find('input, select, textarea').prop('disabled', true);
+            }
+        }
+        var $sumRow = $card.find('.summary-row[data-toggle-controls]');
+        if ($sumRow.length) {
+            var sumTargets = ($sumRow.data('toggle-controls') || '').split(',').filter(Boolean);
+            for (var j = 0; j < sumTargets.length; j++) {
+                var $sr = $card.find('.summary-row[data-field-key="' + sumTargets[j] + '"]');
+                if (on) $sr.show(); else $sr.hide();
+            }
+        }
+    });
+    $('#bindings-area input[data-is-toggle="1"]').trigger('change');
+}
+
+function bindEditToggle() {
+    $('#bindings-area').off('click', '.binding-btn-edit').on('click', '.binding-btn-edit', function() {
+        var $btn = $(this);
+        var $card = $btn.closest('.binding-form');
+        if ($card.hasClass('mode-edit')) {
+            refreshSummary($card);
+            $card.removeClass('mode-edit');
+            $card.find('.mode-summary').show();
+            $card.find('.mode-form').hide();
+            $btn.find('.btn-label').text('编辑');
+            $btn.find('i').removeClass('fa-check').addClass('fa-pen-to-square');
+        } else {
+            $card.addClass('mode-edit');
+            $card.find('.mode-summary').hide();
+            $card.find('.mode-form').show();
+            $btn.find('.btn-label').text('完成');
+            $btn.find('i').removeClass('fa-pen-to-square').addClass('fa-check');
+        }
+    });
+}
+
+function refreshSummary($card) {
+    if (!$card) $card = $('#bindings-area');
+    if ($card.hasClass('binding-form')) {
+        // single card
+    } else {
+        $card = $card.find('.binding-form');
+    }
+    $card.each(function() {
+        var $c = $(this);
+        var pk = $c.data('provider-key');
+        $c.find('.summary-value').each(function() {
+            var $sv = $(this);
+            var fk = $sv.data('field-key');
+            var ftype = $sv.data('field-type') || '';
+            var uiw = $sv.data('ui-widget') || '';
+            var required = $sv.attr('data-required') === '1';
+            var $input = $c.find('[name="config_' + pk + '_' + fk + '"]');
+            var isEmpty = false;
+
+            if (uiw === 'dir_with_base') {
+                var $dirBox = $c.find('.dir-with-base[data-field="' + fk + '"]');
+                if ($dirBox.length) {
+                    var sub = $dirBox.find('.dir-sub-input').val() || '.venv';
+                    var full = $dirBox.find('.dir-full-path').val() || '';
+                    $sv.html('<span class="font-weight-bold">' + escapeHtml(sub) + '</span>' +
+                        (full ? ('<small class="text-muted ml-2">' + escapeHtml(full) + '</small>') : ''));
+                    isEmpty = !full;
+                }
+            } else if (ftype === 'checkbox') {
+                var checked = $input.prop('checked');
+                isEmpty = false;
+                if (checked) {
+                    $sv.html('<span class="text-success">使用 <i class="fa-solid fa-check"></i></span>');
+                } else {
+                    $sv.html('<span class="text-muted">关闭</span>');
+                }
+            } else if (ftype === 'select') {
+                var val = $input.val() || '';
+                var label = val;
+                $input.find('option').each(function() {
+                    if ($(this).val() === val) label = $(this).text();
+                });
+                isEmpty = !val;
+                if (isEmpty && required) {
+                    $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                } else if (isEmpty) {
+                    $sv.html('<span class="text-muted">—</span>');
+                } else {
+                    $sv.html('<span class="font-weight-bold">' + escapeHtml(label) + '</span>');
+                }
+            } else if (ftype === 'password') {
+                var pv = ($input.val() || '').trim();
+                isEmpty = !pv;
+                if (isEmpty && required) {
+                    $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                } else if (isEmpty) {
+                    $sv.html('<span class="text-muted">未设置</span>');
+                } else {
+                    $sv.html('••••••');
+                }
+            } else {
+                var tv = ($input.val() || '').trim();
+                isEmpty = !tv;
+                if (isEmpty && required) {
+                    $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                } else {
+                    $sv.html('<span class="font-weight-bold">' + escapeHtml(tv || '—') + '</span>');
+                }
+            }
+
+            if (required && isEmpty) {
+                $sv.attr('data-state', 'warn');
+                $sv.closest('.summary-row').addClass('has-error');
+            } else {
+                $sv.removeAttr('data-state');
+                $sv.closest('.summary-row').removeClass('has-error');
+            }
+        });
+    });
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+}
+
+function validateBindings() {
+    var missing = [];
+    $('#bindings-area .binding-form.mode-edit').removeClass('mode-edit');
+    $('#bindings-area .binding-form').each(function() {
+        var $card = $(this);
+        var $summary = $card.find('.mode-summary');
+        if ($summary.is(':hidden')) {
+            $card.addClass('mode-edit');
+            $summary.show();
+            $card.find('.mode-form').hide();
+            var $btn = $card.find('.binding-btn-edit');
+            $btn.find('.btn-label').text('编辑');
+            $btn.find('i').removeClass('fa-check').addClass('fa-pen-to-square');
+        }
+        refreshSummary($card);
+    });
+    var $warns = $('#bindings-area .summary-value[data-state="warn"]');
+    $warns.each(function() {
+        var $sv = $(this);
+        var $row = $sv.closest('.summary-row');
+        $row.addClass('has-error');
+        var $card = $sv.closest('.binding-form');
+        var pk = $card.data('provider-key');
+        var $label = $row.find('.summary-label');
+        var labelText = ($label.text() || '').replace(/\*/g, '').trim();
+        var providerLabel = $card.find('.card-header .font-weight-bold').text().trim();
+        missing.push({
+            provider_key: pk,
+            provider_label: providerLabel,
+            field_label: labelText,
+            $card: $card
+        });
+    });
+    return missing;
+}
+
+function collectBindings() {
+    var bindings = {};
+    $('#bindings-area .binding-form').each(function() {
+        var pk = $(this).data('provider-key');
+        if (!pk) return;
+        var config = {};
+        $(this).find('input, select, textarea').each(function() {
+            var $el = $(this);
+            if ($el.is(':disabled')) return;
+            var n = $el.attr('name');
+            if (!n || n.indexOf('config_' + pk + '_') !== 0) return;
+            var fieldKey = n.substring(('config_' + pk + '_').length);
+            if ($el.attr('type') === 'checkbox') {
+                config[fieldKey] = $el.is(':checked');
+            } else if ($el.attr('type') === 'number') {
+                var numVal = parseFloat($el.val());
+                config[fieldKey] = isNaN(numVal) ? null : numVal;
+            } else {
+                config[fieldKey] = $el.val();
+            }
+        });
+        bindings[pk] = config;
+    });
+    $('#bindings-area .dir-with-base').each(function() {
+        var $box = $(this);
+        var pk = $box.data('fpk');
+        var field = $box.data('field');
+        if (!pk || !field) return;
+        var fullPath = $box.find('.dir-full-path').val() || '';
+        if (fullPath) {
+            var cfg = bindings[pk] || {};
+            cfg[field] = fullPath;
+            bindings[pk] = cfg;
+        }
+    });
+    return bindings;
+}
+
+$('#import-btn-confirm').on('click', function() {
+    if ($(this).prop('disabled')) return;
+    var dirPath = ($('#import-dir-path').val() || '').trim();
+    if (!dirPath) {
+        layui.layer.msg('请输入项目目录路径', {icon: 2});
+        return;
+    }
+
+    if (!_importScanData) {
+        doImportScan(dirPath);
+        return;
+    }
+
+    doImportSubmit();
+});
+
+function doImportSubmit() {
+    var dirPath = ($('#import-dir-path').val() || '').trim();
+    var projectName = ($('#import-project-name').val() || '').trim();
+    if (!dirPath) return;
+
+    var missing = validateBindings();
+    if (missing.length) {
+        var first = missing[0];
+        var labels = {};
+        var uniqueProviders = [];
+        missing.forEach(function(m) {
+            if (!labels[m.provider_key]) labels[m.provider_key] = m.provider_label;
+            if (uniqueProviders.indexOf(m.provider_label) === -1) uniqueProviders.push(m.provider_label);
+        });
+        layui.layer.alert(
+            '有 <strong>' + missing.length + '</strong> 个必填项未填写，涉及 <strong>' + uniqueProviders.length + '</strong> 个组件：<br><br>' +
+            uniqueProviders.map(function(l) { return '• ' + l; }).join('<br>') +
+            '<br><br>请点击对应组件卡片上的「编辑」按钮补全后再提交。',
+            { icon: 2, title: '组件配置不完整', area: ['420px', 'auto'] }
+        );
+        $('html, body').animate({scrollTop: first.$card.offset().top - 100}, 400);
+        return;
+    }
+
+    var mode = (_importScanData && _importScanData._mode) || 'auto';
+    var configs = collectBindings();
+
+    setConfirmButtonToImport(true);
+    $('#import-btn-confirm .btn-label').text('导入中...');
+    $('#import-result').hide();
+    $('#import-progress-text').text('正在导入项目...');
+    $('#import-progress').show();
+
+    $.post('{% url "project_mgmt:api_import_local" %}', {
+        dir_path: dirPath,
+        project_name: projectName,
+        mode: mode,
+        configs: JSON.stringify(configs),
+    }, function(resp) {
+        $('#import-progress').hide();
+        if (!resp.ok) {
+            $('#import-error').text(resp.error || '导入失败').show();
+            setConfirmButtonToImport(false);
+            return;
+        }
+        var html =
+            '<div class="alert alert-success mb-3">' +
+                '<i class="fa-solid fa-circle-check"></i> ' +
+                '<strong>导入成功！</strong>' +
+            '</div>' +
+            '<table class="table table-sm mb-3">' +
+                '<tr><td style="width:120px">项目 ID</td><td><code>' + resp.project_id + '</code></td></tr>' +
+                '<tr><td>项目名称</td><td>' + resp.project_name + '</td></tr>' +
+                '<tr><td>导入模式</td><td>' + (resp.import_mode === 'snapshot_restore' ? '快照恢复' : '组件识别') + '</td></tr>' +
+                '<tr><td>组件</td><td><span class="text-success">正常 ' + resp.imported_count + '</span>';
+        if (resp.missing_count > 0) {
+            html += ' / <span class="text-danger">缺失 ' + resp.missing_count + '</span>';
+        }
+        html += '</td></tr>';
+        if (resp.skipped_providers && resp.skipped_providers.length) {
+            html += '<tr><td>缺失组件</td><td class="text-danger">' + resp.skipped_providers.join(', ') + '</td></tr>';
+        }
+        html += '</table>' +
+            '<div class="text-center">' +
+                '<a href="{% url "project_mgmt:index" %}" class="btn btn-primary">查看项目列表</a>' +
+            '</div>';
+        $('#import-result').html(html).show();
+        $('#import-bindings-card').hide();
+        $('#import-scan-result').hide();
+        setConfirmButtonToImport(true);
+        $('#import-btn-confirm .btn-label').text('已完成');
+    }).fail(function() {
+        $('#import-progress').hide();
+        $('#import-error').text('请求失败').show();
+        setConfirmButtonToImport(false);
+    });
+}
+</script>
+{% endblock %}

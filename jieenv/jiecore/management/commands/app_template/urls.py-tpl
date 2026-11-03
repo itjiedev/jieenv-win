@@ -1,0 +1,13 @@
+from django.urls import path
+
+from . import views
+
+app_name = '{{ app_name }}'
+
+urlpatterns = [
+    # 页面
+    path('', views.IndexView.as_view(), name='index'),
+
+    # JSON API
+    # path('api/example/', views.api_example, name='api_example'),
+]

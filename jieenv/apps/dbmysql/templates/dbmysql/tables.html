@@ -1,0 +1,207 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2">
+            <i class="fa fa-user"></i> {{ conn_info.user }}@{{ conn_info.host }}:{{ conn_info.port }}
+        </span>
+        <span class="badge badge-secondary py-2"><i class="fa fa-database"></i> {{ db }}</span>
+    </div>
+    <div class="card-tools">
+        <a href="{% url 'dbmysql:table_create' conn_id db %}" class="btn btn-success btn-sm"><i class="fa fa-plus"></i> 新建数据表</a>
+{#        <a href="{% url 'dbmysql:databases' conn_id %}" class="btn btn-default btn-sm"><i class="fa fa-arrow-left"></i> 数据库列表</a>#}
+        <a href="javascript:;" id="btn-logout" class="btn btn-outline-danger btn-sm"><i class="fa fa-sign-out-alt"></i> 退出连接</a>
+    </div>
+</div>
+
+{% if db_error %}
+<div class="alert alert-danger">操作异常：{{ db_error }}</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title"><i class="fa fa-table"></i> 数据表列表 - {{ db }}</h3></div>
+            <div class="card-body p-0">
+                <table class="table table-striped table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>表名</th><th>引擎</th><th>行数</th><th>大小</th>
+                            <th>注释</th><th>创建时间</th><th style="width:100px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+{% for t in tables %}
+                        <tr>
+                            <td><a href="{% url 'dbmysql:columns' conn_id db t.name %}"><b>{{ t.name }}</b></a></td>
+                            <td>{{ t.engine }}</td>
+                            <td>{{ t.rows }}</td>
+                            <td>{{ t.data_length }}</td>
+                            <td title="{{ t.comment }}">{{ t.comment|truncatechars:16 }}</td>
+                            <td>{{ t.create_time|truncatechars:19 }}</td>
+                            <td>
+                                <div class="dropdown">
+                                    <button type="button" class="btn btn-light btn-sm dropdown-toggle"
+                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        操作
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-right">
+                                        <a class="dropdown-item" href="{% url 'dbmysql:columns' conn_id db t.name %}">
+                                            <i class="fa fa-columns mr-1"></i>字段管理</a>
+                                        <button type="button" class="dropdown-item btn-table-data" data-name="{{ t.name }}">
+                                            <i class="fa fa-table mr-1"></i>数据浏览</button>
+                                        <a class="dropdown-item" href="{% url 'dbmysql:indexes' conn_id db t.name %}">
+                                            <i class="fa fa-list-ul mr-1"></i>索引管理</a>
+                                        <button type="button" class="dropdown-item btn-table-ddl" data-name="{{ t.name }}">
+                                            <i class="fa fa-code mr-1"></i>建表语句</button>
+                                        <div class="dropdown-divider"></div>
+                                        <button type="button" class="dropdown-item btn-table-truncate text-warning" data-name="{{ t.name }}">
+                                            <i class="fa fa-eraser mr-1"></i>清空表数据</button>
+                                        <button type="button" class="dropdown-item btn-table-drop text-danger" data-name="{{ t.name }}">
+                                            <i class="fa fa-trash mr-1"></i>删除表</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+{% empty %}
+                        <tr><td colspan="7" class="text-center text-muted py-4">该库暂无数据表</td></tr>
+{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_TABLE = '{% url 'dbmysql:api_table' conn_id %}';
+    var API_DATA = '{% url 'dbmysql:api_table_data' conn_id db 'TABLE_PLACEHOLDER' %}';
+    var API_SHOW_CREATE = '{% url 'dbmysql:api_table_show_create' conn_id db 'TABLE_PLACEHOLDER' %}';
+    var DB_NAME = '{{ db }}';
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    $('#btn-logout').on('click', function () {
+        $.post('{% url 'dbmysql:api_logout' %}', {conn_id: '{{ conn_id }}'}).done(function (res) {
+            window.location.href = res.redirect || '{% url 'dbmysql:index' %}';
+        });
+    });
+
+    // ── 表数据浏览 ──
+    $('.btn-table-data').on('click', function () {
+        var table = $(this).data('name');
+        showTableData(table);
+    });
+    function showTableData(table, page) {
+        page = page || 1;
+        var url = API_DATA.replace('TABLE_PLACEHOLDER', table) + '?page=' + page + '&page_size=100';
+        var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.get(url).done(function (res) {
+            layer.close(loadIdx);
+            if (!res.success) { msg(res.message, false); return; }
+            var d = res.data;
+            var head = '<thead><tr><th style="width:40px">#</th>';
+            for (var i = 0; i < d.columns.length; i++) head += '<th>' + d.columns[i] + '</th>';
+            head += '</tr></thead>';
+            var body = '<tbody>';
+            for (var r = 0; r < d.rows.length; r++) {
+                body += '<tr><td class="text-muted">' + ((page - 1) * 100 + r + 1) + '</td>';
+                for (var c = 0; c < d.rows[r].length; c++) {
+                    var v = d.rows[r][c];
+                    body += '<td title="' + (v == null ? 'NULL' : String(v).replace(/"/g, '&quot;')) + '">' +
+                            (v == null ? '<span class="text-muted">NULL</span>' :
+                             (String(v).length > 60 ? String(v).substring(0, 60) + '…' : v)) + '</td>';
+                }
+                body += '</tr>';
+            }
+            body += '</tbody>';
+            var pager = '<div style="padding:8px 0;text-align:center">';
+            pager += '<span class="text-muted mr-2">共 ' + d.total + ' 行，第 ' + page + '/' + d.total_pages + ' 页</span>';
+            pager += '<button class="btn btn-sm btn-default mr-1" id="pager-prev" ' + (page <= 1 ? 'disabled' : '') + '>上一页</button>';
+            pager += '<button class="btn btn-sm btn-default" id="pager-next" ' + (page >= d.total_pages ? 'disabled' : '') + '>下一页</button>';
+            if (d.cursor_fallback) { pager += '<span class="text-warning ml-3"><i class="fa fa-exclamation-triangle"></i> 大表已自动降级游标模式</span>'; }
+            pager += '</div>';
+            var content = '<div style="max-height:70vh;overflow:auto">' +
+                '<table class="table table-sm table-bordered table-hover">' + head + body + '</table>' +
+                pager + '</div>';
+
+            layui.use('layer', function () {
+                var layer = layui.layer;
+                layer.open({
+                    type: 1,
+                    title: '<i class="fa fa-table"></i> ' + DB_NAME + '.' + table + ' 数据浏览',
+                    content: content,
+                    area: ['80vw', '80vh'],
+                    end: function () {}
+                });
+                $('#pager-prev').on('click', function () { layer.closeAll(); showTableData(table, page - 1); });
+                $('#pager-next').on('click', function () { layer.closeAll(); showTableData(table, page + 1); });
+            });
+        });
+    }
+
+    // ── 建表语句 ──
+    $('.btn-table-ddl').on('click', function () {
+        var table = $(this).data('name');
+        var url = API_SHOW_CREATE.replace('TABLE_PLACEHOLDER', table);
+        var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.get(url).done(function (res) {
+            layer.close(loadIdx);
+            if (!res.success) { msg(res.message, false); return; }
+            layui.use('layer', function () {
+                var layer = layui.layer;
+                layer.open({
+                    type: 1,
+                    title: '<i class="fa fa-code"></i> ' + table + ' 建表语句',
+                    content: '<pre style="background:#f5f5f5;padding:15px;max-height:60vh;overflow:auto;white-space:pre-wrap;font-size:13px;margin:0">' +
+                        res.ddl + '</pre>',
+                    area: ['70vw', '70vh']
+                });
+            });
+        });
+    });
+
+    $('.btn-table-truncate').on('click', function () {
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定清空表 "' + name + '" 的全部数据吗？此操作不可恢复！',
+                {icon: 3, title: '清空数据'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post(API_TABLE, {action: 'truncate', db: DB_NAME, table: name}).done(function (res) {
+                    layer.close(loadIdx);
+                    msg(res.message, res.success);
+                    if (res.success) { setTimeout(function () { window.location.reload(); }, 800); }
+                });
+            });
+        });
+    });
+
+    $('.btn-table-drop').on('click', function () {
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定删除表 "' + name + '" 吗？表结构与数据将全部丢失，不可恢复！',
+                {icon: 3, title: '删除表'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post(API_TABLE, {action: 'drop', db: DB_NAME, table: name}).done(function (res) {
+                    layer.close(loadIdx);
+                    msg(res.message, res.success);
+                    if (res.success) { setTimeout(function () { window.location.reload(); }, 800); }
+                });
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

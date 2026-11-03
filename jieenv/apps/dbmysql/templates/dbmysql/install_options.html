@@ -1,0 +1,212 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2">
+            <i class="fa fa-tag"></i> MySQL {{ entry.version }}
+        </span>
+        <span class="badge py-2 {% if entry.channel == 'current' %}badge-primary{% elif entry.is_lts %}badge-success{% else %}badge-secondary{% endif %}">
+            {{ entry.channel_display }}
+        </span>
+    </div>
+{#    <div class="card-tools">#}
+{#        <a href="{% url 'dbmysql:install' %}" class="btn btn-default btn-sm"><i class="fa fa-arrow-left"></i> 版本列表</a>#}
+{#        <a href="{% url 'dbmysql:index' %}" class="btn btn-default btn-sm"><i class="fa fa-home"></i> 返回首页</a>#}
+{#    </div>#}
+</div>
+
+<div class="card card-success card-outline">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-cogs"></i> 安装选项</h3></div>
+    <div class="card-body">
+        <form id="install-form">
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">安装目录</label>
+                <div class="col-sm-9">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="opt-install-dir" value="{{ default_install_dir }}">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-install-dir-browse">
+                                <i class="fa fa-folder-open"></i> 浏览</button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">实际安装到该目录下的 mysql-{{ entry.version }}-winx64 子目录</small>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">端口</label>
+                <div class="col-sm-9">
+                    <div class="input-group" style="max-width:220px">
+                        <input type="number" class="form-control" id="opt-port" value="3306">
+                        <div class="input-group-append">
+                            <span class="input-group-text" id="port-status-icon" style="font-size:14px"></span>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted" id="port-status-msg">页面加载时自动检测端口是否可用</small>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">root 密码 <span class="text-danger">*</span></label>
+                <div class="col-sm-9">
+                    <input type="password" class="form-control" id="opt-password" autocomplete="new-password">
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">服务名</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" id="opt-service" placeholder="留空自动生成，如 MySQL8411">
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">字符集</label>
+                <div class="col-sm-9">
+                    <select class="form-control" id="opt-charset">
+                        <option value="utf8mb4" selected>utf8mb4（推荐）</option>
+                        <option value="utf8">utf8</option>
+                        <option value="gbk">gbk</option>
+                        <option value="latin1">latin1</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group row">
+                <div class="col-sm-9 offset-sm-3">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="opt-as-service" checked>
+                        <label class="custom-control-label" for="opt-as-service">
+                            注册为 Windows 服务（需要管理员权限，失败时自动降级为普通进程启动）
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group row mb-0">
+                <div class="col-sm-9 offset-sm-3">
+                    <button type="button" id="btn-start-install" class="btn btn-success">
+                        <i class="fa fa-play"></i> 开始下载并自动安装
+                    </button>
+                    <a href="{% url 'dbmysql:install' %}" class="btn btn-default">返回版本列表</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var VERSION = '{{ entry.version }}';
+    var DOWNLOAD_URL = '{{ entry.url }}';
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    // 浏览按钮：打开 jiecore 通用目录选择器
+    $('#btn-install-dir-browse').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 MySQL 安装目录',
+            initialPath: $('#opt-install-dir').val().trim(),
+            onSelect: function (path) {
+                $('#opt-install-dir').val(path);
+            }
+        });
+    });
+
+    // ── 端口可用性检测 ───────────────────────────────────
+    var portCheckTimer = null;
+    function checkPort() {
+        var val = $('#opt-port').val().trim();
+        if (!val) return;
+        clearTimeout(portCheckTimer);
+        portCheckTimer = setTimeout(function () {
+            $.get('{% url "dbmysql:api_port_check" %}', {port: val}).done(function (res) {
+                if (res.available) {
+                    $('#port-status-icon').html('<i class="fa fa-check text-success"></i>');
+                    $('#port-status-msg').html('<span class="text-success">端口可用</span>');
+                } else {
+                    $('#port-status-icon').html('<i class="fa fa-exclamation-circle text-danger"></i>');
+                    $('#port-status-msg').html(
+                        '<span class="text-danger">' + res.message + '</span>'
+                        + (res.suggested
+                            ? ' &nbsp;<a href="javascript:;" id="btn-use-suggested-port"><span class="text-primary">自动使用建议端口 ' + res.suggested + '</span></a>'
+                            : '')
+                    );
+                    $('#btn-use-suggested-port').on('click', function () {
+                        $('#opt-port').val(res.suggested).trigger('input');
+                    });
+                }
+            });
+        }, 350);
+    }
+    // 页面加载时自动检测默认端口
+    checkPort();
+    // 用户手动修改端口时实时检测
+    $('#opt-port').on('input', checkPort);
+
+    function startInstall() {
+        $('#btn-start-install').prop('disabled', true);
+        $.post('{% url 'dbmysql:api_install_start' %}', {
+            version: VERSION,
+            url: DOWNLOAD_URL,
+            install_dir: $('#opt-install-dir').val(),
+            port: $('#opt-port').val(),
+            root_password: $('#opt-password').val(),
+            service_name: $('#opt-service').val(),
+            as_service: $('#opt-as-service').is(':checked') ? '1' : '0',
+            charset: $('#opt-charset').val()
+        }).done(function (res) {
+            if (res && res.success) {
+                JieTaskLog.open({
+                    title: '安装 MySQL ' + VERSION,
+                    taskUrl: '{% url "dbmysql:api_install_status" "TASK_ID_PLACEHOLDER" %}'.replace('TASK_ID_PLACEHOLDER', res.task_id),
+                    width: '600px',
+                    height: '460px',
+                    logHeight: 280,
+                    onSuccess: function () {
+                        layui.use('layer', function () {
+                            layui.layer.confirm('安装成功！是否返回首页登录管理？', {icon: 1, title: '安装完成'},
+                                function (index) {
+                                    layui.layer.close(index);
+                                    window.location.href = '{% url 'dbmysql:index' %}';
+                                });
+                        });
+                    },
+                    onFail: function () {
+                        $('#btn-start-install').prop('disabled', false);
+                    }
+                });
+            } else {
+                msg((res && res.message) || '启动安装失败', false);
+                $('#btn-start-install').prop('disabled', false);
+            }
+        }).fail(function () {
+            msg('启动安装请求失败', false);
+            $('#btn-start-install').prop('disabled', false);
+        });
+    }
+
+    $('#btn-start-install').on('click', function () {
+        if (!$('#opt-password').val()) {
+            msg('请填写 root 密码', false);
+            return;
+        }
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm(
+                '即将下载并安装 MySQL ' + VERSION +
+                '（安装包约 200~400MB，耗时取决于网速）。<br>安装过程请勿关闭本页面，确定继续？',
+                {icon: 3, title: '确认安装'}, function (index) {
+                layer.close(index);
+                $('#btn-start-install').prop('disabled', true);
+                startInstall();
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

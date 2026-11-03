@@ -1,0 +1,174 @@
+{% extends "python_main/layout.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+    var layer = layui.layer, $ = layui.$, util = layui.util;
+
+    // 选择安装目录：复用 jiecore 通用目录选择器
+    $(document).on('click', '#btn-install-dir-browse', function () {
+        JieDirPicker.open({
+            title: '选择 PyCharm 安装目录',
+            initialPath: $('#opt-install-dir').val().trim(),
+            onSelect: function (path) {
+                $('#opt-install-dir').val(path + '\\Pycharm {{ version }}');
+            }
+        });
+    });
+
+    util.on('lay-on', {
+        install: function () {
+            var installDir = $('#opt-install-dir').val().trim();
+            if (!installDir) {
+                layer.msg('请填写安装目录', {icon: 2, time: 3000});
+                return;
+            }
+            // 取当前选中的版本下载地址
+            var $checked = $('input[name="pycharm_edition"]:checked');
+            var downloadUrl = $checked.attr('data-url') || '';
+            var editionName = $checked.attr('data-name') || '';
+            if (!downloadUrl) {
+                layer.msg('没有可用的下载地址，请返回版本列表重新选择', {icon: 2, time: 4000});
+                return;
+            }
+
+            layer.confirm(
+                '即将下载并静默安装 <b>PyCharm {{ version }}</b>' + (editionName ? '（' + editionName + '）' : '') +
+                ' 到：<br><span class="text-primary">' + installDir + '</span><br>' +
+                '安装过程会申请管理员权限（UAC），请勿关闭本页面，确定继续？',
+                {icon: 3, title: '确认安装'}, function (index) {
+                layer.close(index);
+                // 后端登记 jiecore.tasks 后台任务（下载 + 提权静默安装）并回传 task_id，
+                // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
+                $.post('{% url "python_main:api_pycharm_install" %}', {
+                    version: '{{ version }}',
+                    download_url: downloadUrl,
+                    install_dir: installDir
+                }).done(function (res) {
+                    if (!res || !res.success) {
+                        layer.msg((res && res.message) || '启动安装失败', {icon: 2, time: 4000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '安装 PyCharm {{ version }}',
+                        taskId: res.task_id,
+                        onSuccess: function () {
+                            window.location.href = "{% url 'python_main:pycharm_detail' %}";
+                        },
+                        onFail: function (result) {
+                            layer.alert((result && result.message) || '安装失败', {icon: 2, title: null});
+                        }
+                    });
+                }).fail(function (xhr) {
+                    var msg;
+                    if (!xhr || !xhr.status) {
+                        msg = '无法连接后台服务，请确认服务仍在运行后重试';
+                    } else if (xhr.status === 403) {
+                        msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+                    } else {
+                        msg = '安装请求失败（HTTP ' + xhr.status + '）';
+                    }
+                    layer.alert(msg, {icon: 2, title: null});
+                });
+            });
+        }
+    });
+});
+</script>
+{% endblock %}
+
+{% block provider_content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-1">
+                <img src="{% static 'python_main/pycharm.svg' %}" style="width: 54px; height: 54px"/>
+            </div>
+            <div class="col-md-11 layui-font-18 text-bold">安装 PyCharm {{ version }}</div>
+        </div>
+    </div>
+
+    {% if not entry %}
+    <div class="card-body">
+        <div class="alert alert-danger mb-0">
+            未能在版本缓存中找到 <b>{{ version }}</b> 的下载地址，请返回
+            <a href="{% url 'python_main:pycharm_versions' %}" class="alert-link">版本列表</a> 重新抓取后再试。
+        </div>
+    </div>
+    <div class="card-footer">
+        <a href="{% url 'python_main:pycharm_versions' %}" class="btn btn-secondary">返回</a>
+    </div>
+    {% else %}
+    <form method="post" class="layui-form">{% csrf_token %}
+        <div class="card-body">
+            {% if pycharm %}
+            <div class="alert alert-warning">
+                检测到本机已安装 <b>{{ pycharm.DisplayName }}</b>（{{ pycharm.InstallLocation }}）。
+                继续安装可能会覆盖或共存，请谨慎操作。
+            </div>
+            {% endif %}
+
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">安装版本</label>
+                <div class="col-sm-9">
+                    {% if entry.is_unified %}
+                    <div class="custom-control custom-radio">
+                        <input type="radio" id="edition-unified"
+                               name="pycharm_edition" checked
+                               data-url="{{ entry.exe_url }}" data-name="统一版"
+                               title="统一版（Unified，含专业版与社区版能力）"
+                        >
+                    </div>
+                    {% else %}
+                    <div class="custom-control custom-radio">
+                        <input type="radio" class="custom-control-input" id="edition-pro"
+                               name="pycharm_edition" checked
+                               data-url="{{ entry.exe_url }}" data-name="专业版"
+                               title="专业版（Professional）"                        >
+
+                    </div>
+                    {% if entry.community_exe_url %}
+                    <div class="custom-control custom-radio">
+                        <input type="radio" class="custom-control-input" id="edition-community"
+                               name="pycharm_edition"
+                               data-url="{{ entry.community_exe_url }}" data-name="社区版"
+                               title="社区版（Community，免费）"
+                        >
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">安装目录</label>
+                <div class="col-sm-9">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="opt-install-dir"
+                               value="{{ default_install_dir }}">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-install-dir-browse">
+                                <i class="fa fa-folder-open"></i> 浏览
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">PyCharm 将静默安装到此目录</small>
+                </div>
+            </div>
+
+<div class="alert alert-info py-2 small mb-0" role="alert">
+    <i class="fa fa-info-circle"></i>
+    JieEnv仅在本机自动从官方源下载并静默安装原版软件，不提供任何许可证或激活服务。安装即表示您已知晓并同意该软件的官方许可条款，具体授权规则以官方说明为准。
+</div>
+        </div>
+        <div class="card-footer">
+            <button type="button" class="btn btn-success" lay-on="install">
+                <i class="fa fa-download"></i> 安装
+            </button>
+            <a href="{% url 'python_main:pycharm_versions' %}" class="btn btn-secondary float-right">取消</a>
+        </div>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-primary card-outline">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-cog"></i> 应用设置</h3></div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            安装 Python 独立模式时的根目录。默认会安装到该目录下的
+            <code>Python-&lt;主版本号&gt;_&lt;次版本号&gt;_&lt;修订号&gt;_archive</code> 子目录中，实际安装时可再修改。
+            修改后对新安装生效，已有安装不受影响。
+        </p>
+        <form id="settings-form">
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">安装根目录</label>
+                <div class="col-sm-9">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="cfg-install-dir"
+                               value="{{ config.install_dir|default:'' }}">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-browse-install-dir">
+                                <i class="fa fa-folder-open"></i> 浏览</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4">
+
+            <h6 class="text-uppercase text-muted mb-3"><i class="fa fa-cubes"></i> 虚拟环境</h6>
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">严格卸载检查</label>
+                <div class="col-sm-9">
+                    <div class="custom-control custom-switch">
+                        <input type="checkbox" class="custom-control-input" id="cfg-strict-uninstall"
+                               {% if config.strict_uninstall_check %}checked{% endif %}>
+                        <label class="custom-control-label" for="cfg-strict-uninstall">
+                            开启后，当归属解释器下存在虚拟环境时，<b>不允许</b>卸载或从列表移除
+                        </label>
+                    </div>
+                    <small class="form-text text-muted">
+                        默认关闭：仅弹出警告提示，用户确认后可继续卸载/移除。
+                        开启后将强制拦截，必须先手动删除所有下属虚拟环境才行。
+                    </small>
+                </div>
+            </div>
+
+            <div class="form-group row mb-0">
+                <div class="col-sm-9 offset-sm-3">
+                    <button type="button" id="btn-save" class="btn btn-primary">
+                        <i class="fa fa-save"></i> 保存设置</button>
+                    <a href="{% url 'python_installer:index' %}" class="btn btn-default">取消</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+
+{% block js_code %}
+<script>
+$(function () {
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    $('#btn-browse-install-dir').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 Python 默认安装根目录',
+            initialPath: $('#cfg-install-dir').val().trim(),
+            onSelect: function (path) {
+                $('#cfg-install-dir').val(path);
+            }
+        });
+    });
+
+    $('#btn-save').on('click', function () {
+        var installDir = $('#cfg-install-dir').val().trim();
+        if (!installDir) {
+            msg('请填写安装目录', false);
+            return;
+        }
+        var loadIdx = layui.layer.load(2, {shade: [0.3, '#000']});
+        $.post('{% url "python_archive:api_settings_save" %}',
+            {
+                install_dir: installDir,
+                strict_uninstall_check: $('#cfg-strict-uninstall').prop('checked') ? 'on' : ''
+            }
+        ).done(function (res) {
+            layui.layer.close(loadIdx);
+            layui.layer.alert(res.message, {icon: 1, title: "操作提示", shade: 0.3}, function (index) {
+                layui.layer.close(index);
+            });
+        }).fail(function () {
+            layui.layer.close(loadIdx);
+            msg('请求失败', false);
+        });
+    });
+});
+</script>
+{% endblock %}

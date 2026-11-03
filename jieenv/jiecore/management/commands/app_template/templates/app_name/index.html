@@ -1,0 +1,33 @@
+{% extends "layout_base.html" %}
+
+{% block page_content %}
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-body">
+            <p>欢迎使用应用</p>
+        </div>
+    </div>
+
+    {# ── 扩展钩子渲染示例（作为宿主应用时取消注释）────────
+    # 假设视图中已通过 call_hooks 收集了 ext_actions
+    #
+    # <div class="card mt-3">
+    #     <div class="card-header">操作区</div>
+    #     <div class="card-body">
+    #         <!-- 应用自身的操作按钮 -->
+    #         <button class="btn btn-primary">编辑</button>
+    #         <button class="btn btn-danger">删除</button>
+    #
+    #         <!-- 扩展点：其他应用注入的操作按钮 -->
+    #         {% for action in ext_actions %}
+    #         <a href="{{ action.url }}"
+    #            class="btn {{ action.btn_class|default:'btn-outline-secondary' }}">
+    #             {% if action.icon %}<i class="fa {{ action.icon }}"></i>{% endif %}
+    #             {{ action.label }}
+    #         </a>
+    #         {% endfor %}
+    #     </div>
+    # </div>
+    # ──────────────────────────────────────────────────────── #}
+</div>
+{% endblock %}

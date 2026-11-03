@@ -1,0 +1,235 @@
+{% extends "layout_main.html" %}
+{% block page_title %}{{ page_title|default:"彻底删除项目" }}{% endblock %}
+
+{% block page_content %}
+{% if not project_found %}
+<div class="alert alert-warning">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    项目在回收站中不存在。
+    <a href="{% url 'project_mgmt:trash_index' %}" class="btn btn-link">返回回收站</a>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header bg-danger text-white">
+        <div class="card-title">
+            <i class="fa-solid fa-skull"></i>
+            彻底删除 "{{ project.name }}"
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="permanent-preview">
+            <div class="alert alert-danger">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <strong>⚠ 此操作不可逆！</strong>将执行以下清理：
+                <ul class="mb-0 mt-2 pl-3">
+                    <li>按依赖逆序清理所有组件资源（虚拟环境、数据库等）</li>
+                    <li>同时删除项目目录（需勾选下方选项）</li>
+                    <li>执行后项目从回收站永久移除，<strong>无法恢复</strong></li>
+                </ul>
+            </div>
+
+            <div class="mb-3">
+                <h6 class="text-danger">
+                    <i class="fa-solid fa-list-check"></i>
+                    以下资源将被清理 <span class="badge badge-danger">{{ total_components }}</span>
+                </h6>
+                {% if preview_items %}
+                <ul class="list-group list-group-flush border-left border-danger">
+                    {% for item in preview_items %}
+                    <li class="list-group-item d-flex align-items-center py-2">
+                        <i class="fa-solid fa-caret-right text-danger mr-2"></i>
+                        <i class="{{ item.icon }} text-muted mr-2"></i>
+                        <span class="font-weight-medium">{{ item.label }}</span>
+                        <span class="text-muted ml-2 small">[{{ item.provider_key }}]</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted small">此项目没有绑定的组件（仅清理配置记录）</div>
+                {% endif %}
+            </div>
+
+            <div class="mb-3">
+                <h6><i class="fa-solid fa-folder-open"></i> 项目目录</h6>
+                <code>{{ project.project_dir|default:"（未设置）" }}</code>
+            </div>
+
+            <hr>
+
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="remove-dir">
+                <label class="form-check-label font-weight-bold" for="remove-dir">
+                    同时删除项目目录 <code class="text-danger">{{ project.project_dir|default:"（未设置）" }}</code>
+                </label>
+                <div class="text-muted small">目录内所有文件将被永久删除（不可恢复）</div>
+            </div>
+
+            <div class="form-group">
+                <label class="font-weight-bold text-danger">
+                    请输入{{ ref_type }} <code class="target-ref">{{ ref_name }}</code> 以确认彻底删除：
+                </label>
+                <input type="text" class="form-control" id="confirmed-ref" placeholder="输入{{ ref_type }}">
+            </div>
+
+            <div class="d-flex gap-2">
+                <a href="{% url 'project_mgmt:trash_index' %}" class="btn btn-secondary">
+                    <i class="fa-solid fa-arrow-left"></i> 取消
+                </a>
+                <button type="button" class="btn btn-danger" id="btn-confirm-permanent" disabled>
+                    <i class="fa-solid fa-skull"></i> 确认彻底删除
+                </button>
+            </div>
+        </div>
+
+        <div id="permanent-progress" style="display:none; margin-top: 10px;">
+            <div class="alert alert-danger mb-2" id="progress-alert">
+                <i class="fa-solid fa-hourglass-half fa-spin"></i>
+                正在清理组件资源，请勿关闭页面...
+            </div>
+            <div class="log-box" id="progress-list" style="background:#1e1e1e; color:#f0f0f0;
+                padding:14px 16px; border-radius:6px; font-family:'Consolas','Cascadia Code','Courier New',monospace;
+                font-size:15px; line-height:1.8; max-height:400px; overflow-y:auto;
+                border:1px solid #333;"></div>
+            <div id="permanent-final-result" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+{% if project_found %}
+<script>
+(function() {
+    var projectId = "{{ project.id|escapejs }}";
+    var projectName = "{{ project.name|escapejs }}";
+    var expectedRef = "{{ ref_name|escapejs }}";
+
+    var currentTaskId = null;
+    var pollTimer = null;
+    var lastLogIndex = 0;
+
+    var $confirmInput = $('#confirmed-ref');
+    var $btnConfirm = $('#btn-confirm-permanent');
+
+    $confirmInput.on('input', function() {
+        $btnConfirm.prop('disabled', $(this).val().trim() !== expectedRef);
+    });
+
+    $btnConfirm.on('click', function() {
+        var removeDir = $('#remove-dir').prop('checked') ? '1' : '0';
+
+        $btnConfirm.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> 启动中...');
+
+        $.post('{% url "project_mgmt:api_trash_delete_permanent" %}', {
+            project_id: projectId,
+            confirmed_ref: $confirmInput.val().trim(),
+            remove_dir: removeDir,
+        }, function(resp) {
+            if (!resp.ok) {
+                alert(resp.error || '启动失败');
+                $btnConfirm.prop('disabled', false).html('<i class="fa-solid fa-skull"></i> 确认彻底删除');
+                return;
+            }
+            $('#permanent-preview').hide();
+            $('#permanent-progress').show();
+            $('#permanent-final-result').empty();
+            $('#progress-list').empty();
+            lastLogIndex = 0;
+            currentTaskId = resp.task_id;
+            pollStatus();
+        }, 'json').fail(function(xhr) {
+            alert('请求失败: ' + xhr.responseText);
+            $btnConfirm.prop('disabled', false).html('<i class="fa-solid fa-skull"></i> 确认彻底删除');
+        });
+    });
+
+    function pollStatus() {
+        $.get('{% url "project_mgmt:api_delete_status" %}', {
+            task_id: currentTaskId,
+            after: lastLogIndex,
+        }, function(resp) {
+            if (!resp.success) return;
+            updateFromPayload(resp);
+            if (resp.status === 'pending' || resp.status === 'running') {
+                pollTimer = setTimeout(pollStatus, 500);
+            } else {
+                showFinalResult(resp);
+            }
+        }, 'json');
+    }
+
+    function updateFromPayload(payload) {
+        var logs = payload.logs || [];
+        var $box = $('#progress-list');
+        logs.forEach(function(log) {
+            if (typeof log !== 'string' || !log) return;
+            var text = log;
+            var cls = '';
+            if (text.indexOf('>>') >= 0) cls = 'text-warning';
+            else if (text.indexOf('✅') >= 0 || text.indexOf('清理完成') >= 0 || text.indexOf('已清理') >= 0) cls = 'text-success';
+            else if (text.indexOf('❌') >= 0) cls = 'text-danger';
+            else if (text.indexOf('⛔') >= 0) cls = 'text-danger';
+            else if (text.indexOf('⚠') >= 0) cls = 'text-warning';
+            else if (text.indexOf('📁') >= 0 || text.indexOf('项目目录') >= 0) cls = 'text-info';
+            $box.append($('<div>').addClass(cls).html(escapeHtml(text)));
+        });
+        lastLogIndex = payload.log_index || 0;
+        var el = $box[0];
+        if (el) el.scrollTop = el.scrollHeight;
+    }
+
+    function showFinalResult(payload) {
+        $('#progress-alert').hide();
+        var result = payload.result || {};
+        var html = '';
+
+        if (result.has_errors) {
+            html += '<div class="alert alert-warning">';
+            html += '<i class="fa-solid fa-triangle-exclamation"></i> ';
+            html += '彻底删除完成，但有 ' + result.errors.length + ' 个组件清理失败';
+            html += '</div>';
+            if (result.errors && result.errors.length) {
+                html += '<ul class="text-danger pl-4">';
+                result.errors.forEach(function(e) { html += '<li>' + escapeHtml(e) + '</li>'; });
+                html += '</ul>';
+            }
+        } else {
+            html += '<div class="alert alert-success">';
+            html += '<i class="fa-solid fa-circle-check"></i> 彻底删除完成';
+            html += '</div>';
+        }
+
+        html += '<div class="card"><div class="card-body">';
+        html += '<h6>删除结果汇总</h6>';
+        html += '<table class="table table-sm table-compact mb-0">';
+        html += '<thead><tr><th>组件</th><th>状态</th><th>说明</th></tr></thead><tbody>';
+        (result.items || []).forEach(function(item) {
+            var badge = item.success
+                ? '<span class="badge badge-success">成功</span>'
+                : '<span class="badge badge-danger">失败</span>';
+            html += '<tr>';
+            html += '<td>' + escapeHtml(item.label) + ' <small class="text-muted">[' + escapeHtml(item.provider_key) + ']</small></td>';
+            html += '<td>' + badge + '</td>';
+            html += '<td>' + escapeHtml(item.detail || '-') + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+
+        html += '<div class="d-flex gap-2 mt-3">';
+        html += '<a href="{% url "project_mgmt:trash_index" %}" class="btn btn-primary"><i class="fa-solid fa-arrow-left"></i> 返回回收站</a>';
+        html += '</div>';
+
+        $('#permanent-final-result').html(html);
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

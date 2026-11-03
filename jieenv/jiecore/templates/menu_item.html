@@ -1,0 +1,22 @@
+{% for menu in menu_list %}
+  {% if menu.is_show != False %}
+    {% if not menu.children %}
+      <li class="nav-item">
+        <a href="{{ menu.link|default:'#' }}" class="nav-link{% if menu.active %} active{% endif %}">
+          <i class="nav-icon {{ menu.icon|default:'fa-solid fa-circle' }}"></i>
+          <p>{{ menu.name }}</p>
+        </a>
+      </li>
+    {% else %}
+      <li class="nav-item{% if menu.parent_active or site_skin.menu_default_open %} menu-open{% endif %}">
+        <a href="#" class="nav-link{% if menu.parent_active %} active{% endif %}">
+          <i class="nav-icon {{ menu.icon|default:'fas fa-folder' }}"></i>
+          <p>{{ menu.name }}<i class="right fas fa-angle-left"></i></p>
+        </a>
+        <ul class="nav nav-treeview">
+          {% include "menu_item.html" with menu_list=menu.children %}
+        </ul>
+      </li>
+    {% endif %}
+  {% endif %}
+{% endfor %}

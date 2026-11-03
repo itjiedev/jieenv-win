@@ -1,0 +1,64 @@
+# ═══════════════════════════════════════════════════════════════
+# JieEnv-win Git 属性锁死
+# 防止不同开发者的 Git 全局配置导致换行符混乱
+# ═══════════════════════════════════════════════════════════════
+
+# ── Windows 批处理：强制 CRLF ──
+# cmd.exe 只认 CRLF；编码统一 GBK
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+
+# ── Shell 脚本：强制 LF ──
+*.sh     text eol=lf
+
+# ── 源代码：统一 LF（Python 跨平台友好） ──
+*.py     text eol=lf
+*.js     text eol=lf
+*.ts     text eol=lf
+*.html   text eol=lf
+*.css    text eol=lf
+*.scss   text eol=lf
+
+# ── 配置 / 数据文件：统一 LF ──
+*.json   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.toml   text eol=lf
+*.ini    text eol=lf
+*.cfg    text eol=lf
+*.conf   text eol=lf
+*.env    text eol=lf
+
+# ── 文档：统一 LF ──
+*.md     text eol=lf
+*.txt    text eol=lf
+*.csv    text eol=lf
+
+# ── 模板文件：跟原类型走 ──
+*.tpl    text eol=lf
+
+# ── 二进制：不做任何转换 ──
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.bmp    binary
+*.ico    binary
+*.svg    binary
+*.webp   binary
+*.dll    binary
+*.exe    binary
+*.msi    binary
+*.zip    binary
+*.7z     binary
+*.rar    binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.eot    binary
+*.map    binary
+*.pyc    binary
+*.pyo    binary
+*.db     binary
+*.sqlite binary

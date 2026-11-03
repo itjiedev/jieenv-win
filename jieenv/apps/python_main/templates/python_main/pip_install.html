@@ -1,0 +1,359 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+{# ── 安装新包（直接安装）────────────────────────── #}
+<div class="card card-outline card-info mb-2">
+    <div class="card-header p-2">
+        <h3 class="card-title"><i class="fa fa-download"></i> 安装新包
+            <small class="text-muted ml-2">目标环境：Python {{ record.version }}</small>
+        </h3>
+        <div class="card-tools">
+            <a href="{{ url_list }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fa fa-arrow-left"></i> 返回包列表</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="col-md-3 mb-2">
+                <input type="text" class="form-control" id="direct-package"
+                       placeholder="包名">
+            </div>
+            <div class="col-md-2 mb-1">
+                <select class="form-control" id="direct-operator">
+                    <option value="">最新</option>
+                    <option value="~=">兼容版本(~=)</option>
+                    <option value="==">精确匹配(==)</option>
+                    <option value="<">小于(<)</option>
+                    <option value="<=">小于等于(<=)</option>
+                    <option value=">">大于(>)</option>
+                    <option value=">=">大于等于(>=)</option>
+                    <option value="!=">不等于(!=)</option>
+                </select>
+            </div>
+            <div class="col-md-2 mb-2">
+                <input type="text" class="form-control" id="direct-version"  placeholder="版本">
+            </div>
+            <div class="col-md-2 mb-2">
+                <button class="btn btn-success btn-block" id="btn-direct-install">
+                    <i class="fa fa-download"></i> 直接安装</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── requirements.txt 导入安装（三入口：上传 / 粘贴 / 本机文件）── #}
+<div class="card card-outline card-info">
+    <div class="card-header p-2">
+        <h3 class="card-title"><i class="fa fa-file-text-o"></i> requirements.txt 导入安装
+            <small class="text-muted ml-2">解析 → 预览确认 → 安装</small>
+        </h3>
+        <div class="card-tools">
+            <span class="badge badge-info" id="req-source-badge" style="display:none"></span>
+        </div>
+    </div>
+    <div class="card-body">
+        {# ① 三入口切换条（单选三态，最后操作生效） #}
+        <div class="btn-group mb-2" id="req-entry-switch">
+            <button type="button" class="btn btn-outline-info btn-sm active" data-entry="upload">
+                <i class="fa fa-upload"></i> 上传文件</button>
+            <button type="button" class="btn btn-outline-info btn-sm" data-entry="paste">
+                <i class="fa fa-clipboard"></i> 粘贴文本</button>
+            <button type="button" class="btn btn-outline-info btn-sm" data-entry="path">
+                <i class="fa fa-folder-open-o"></i> 选择本机文件</button>
+        </div>
+        {# ② 入口①上传区：前端读文本，走 content 通道 #}
+        <div id="req-pane-upload" class="req-pane">
+            <input type="file" id="req-file-input" accept=".txt" style="display:none">
+            <div class="form-row">
+                <div class="col-md-3 mb-2">
+                    <button type="button" class="btn btn-outline-info btn-block" id="btn-req-pick-file">
+                        <i class="fa fa-upload"></i> 选择 .txt 文件</button>
+                </div>
+                <div class="col-md-9 mb-2 d-flex align-items-center">
+                    <span class="text-muted small" id="req-file-name">未选择文件</span>
+                </div>
+            </div>
+            <div class="text-muted small">支持 UTF-8 编码文本（含 BOM），大小 ≤ 1MB</div>
+        </div>
+        {# ③ 入口②粘贴区 #}
+        <div id="req-pane-paste" class="req-pane" style="display:none">
+            <textarea class="form-control" id="req-paste-text" rows="6"
+                      placeholder="粘贴 requirements.txt 内容，如：requests==2.31.0&#10;flask>=2.0&#10;# 注释与空行将被忽略"></textarea>
+        </div>
+        {# ④ 入口③本机选择区：服务端读文件（五项复检） #}
+        <div id="req-pane-path" class="req-pane" style="display:none">
+            <div class="form-row">
+                <div class="col-md-3 mb-2">
+                    <button type="button" class="btn btn-outline-info btn-block" id="btn-req-pick-local">
+                        <i class="fa fa-folder-open-o"></i> 浏览本机文件</button>
+                </div>
+                <div class="col-md-7 mb-2">
+                    <input type="text" class="form-control" id="req-local-path" readonly
+                           placeholder="requirements.txt 本机完整路径">
+                </div>
+                <div class="col-md-2 mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-block" id="btn-req-clear-path">
+                        <i class="fa fa-times"></i> 清除</button>
+                </div>
+            </div>
+            <div class="text-muted small">由服务端读取所选文件（UTF-8 编码 .txt，大小 ≤ 1MB）</div>
+        </div>
+        {# ⑤ 操作行：解析预览 #}
+        <div class="form-row mt-2">
+            <div class="col-md-3 mb-2">
+                <button type="button" class="btn btn-primary btn-block" id="btn-req-parse">
+                    <i class="fa fa-cogs"></i> 解析预览</button>
+            </div>
+        </div>
+        {# ⑥ 预览确认区：摘要 + 安装清单（忽略 / 无法识别明细仅记录于任务日志） #}
+        <div id="req-preview" style="display:none">
+            <div class="alert alert-info py-2 mb-2" id="req-preview-summary"></div>
+            <div class="border rounded p-2 mb-2 bg-light" style="max-height:240px; overflow-y:auto">
+                <div class="small font-weight-bold mb-1">
+                    <i class="fa fa-check text-success"></i> 安装如下内容（<span id="req-valid-count"></span>）</div>
+                <div id="req-valid-list"></div>
+            </div>
+            <div class="form-row">
+                <div class="col-md-3 mb-2">
+                    <button type="button" class="btn btn-success btn-block" id="btn-req-install">
+                        <i class="fa fa-download"></i> 开始安装</button>
+                </div>
+                <div class="col-md-3 mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-block" id="btn-req-cancel">
+                        <i class="fa fa-undo"></i> 放弃</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_INSTALL = '{{ api_pip_install }}';
+    var API_REQ_PARSE = '{{ api_pip_requirements_parse }}';
+    var API_REQ_INSTALL = '{{ api_pip_requirements_install }}';
+    var URL_LIST = '{{ url_list }}';
+    var CSRF = $('input[name=csrfmiddlewaretoken]').val();
+
+    function esc(s) {
+        return $('<span>').text(s == null ? '' : String(s)).html();
+    }
+
+    function msg(text, ok, time) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: time || 2500});
+        });
+    }
+
+    // 安装：后台任务 + JieTaskLog 实时日志
+    function doInstall(package, operator, version) {
+        package = (package || '').trim();
+        if (!package) { msg('请填写包名', false); return; }
+        $.post(API_INSTALL, {
+            package: package,
+            operator: (operator || '').trim(),
+            version: (version || '').trim(),
+            csrfmiddlewaretoken: CSRF
+        }).done(function (res) {
+            if (!res || !res.success || !res.task_id) {
+                msg((res && res.message) || '创建安装任务失败', false);
+                return;
+            }
+            JieTaskLog.open({
+                title: '安装 ' + package + (version ? ('==' + version) : ''),
+                taskId: res.task_id,
+                width: '640px', height: '460px', logHeight: 300,
+                onSuccess: function () {
+                    layui.use('layer', function () {
+                        layui.layer.confirm('安装完成，是否返回包列表查看？',
+                            {icon: 1, title: '安装成功', btn: ['返回列表', '继续安装']},
+                            function (idx) { layui.layer.close(idx); window.location.href = URL_LIST; },
+                            function (idx) { layui.layer.close(idx); });
+                    });
+                },
+                onFail: function (result) { msg((result && result.message) || '安装失败', false, 3500); }
+            });
+        }).fail(function () { msg('请求失败，请检查网络', false); });
+    }
+
+    $('#btn-direct-install').on('click', function () {
+        var package_name = $('#direct-package').val().trim();
+        var directOperator = $('#direct-operator').val().trim();
+        var directVersion = $('#direct-version').val().trim();
+        if (!package_name) { msg('请填写包名', false); return; }
+
+        doInstall(package_name, directOperator, directVersion) ;
+    });
+    $('#direct-package').on('keydown', function (e) { if (e.key === 'Enter') { $('#btn-direct-install').click(); } });
+
+    // ── requirements.txt 导入安装（三入口：上传 / 粘贴 / 本机文件）──
+    var REQ_SOURCE_LABELS = {upload: '上传文件', paste: '粘贴文本', path: '本机文件'};
+    var reqState = {
+        source: 'upload',        // 当前生效入口：'upload' | 'paste' | 'path'
+        lastPath: '',            // 入口③会话内位置记忆（再次打开定位上次所选）
+        previewData: null,       // 当前预览结果；非 null 即处于“预览确认”阶段
+        installing: false        // 安装请求进行中，防重复提交
+    };
+    var reqUpload = null;        // 入口①已解码内容 {name, content}
+
+    function invalidateReqPreview() {
+        reqState.previewData = null;
+        $('#req-preview').hide();
+    }
+
+    function updateReqBadge() {
+        $('#req-source-badge').text('来源：' + REQ_SOURCE_LABELS[reqState.source]).show();
+    }
+
+    function resetUpload() {
+        reqUpload = null;
+        $('#req-file-input').val('');
+        $('#req-file-name').text('未选择文件');
+    }
+
+    // 切换入口（最后操作生效）：激活目标 pane、清空其余入口输入、作废预览
+    function switchEntry(entry) {
+        reqState.source = entry;
+        $('#req-entry-switch .btn').removeClass('active');
+        $('#req-entry-switch .btn[data-entry="' + entry + '"]').addClass('active');
+        $('.req-pane').hide();
+        $('#req-pane-' + entry).show();
+        if (entry !== 'upload') { resetUpload(); }
+        if (entry !== 'paste') { $('#req-paste-text').val(''); }
+        if (entry !== 'path') { $('#req-local-path').val(''); }
+        invalidateReqPreview();
+        updateReqBadge();
+    }
+
+    // 入口①：大小 / 扩展名前端预检 + 严格 UTF-8 解码（权威校验在服务端）
+    function handleFileSelected(file) {
+        var name = file.name || '';
+        if (!/\.txt$/i.test(name)) { msg('仅支持选择 .txt 文件', false); resetUpload(); return; }
+        if (file.size > 1024 * 1024) { msg('文件超过 1MB 上限', false); resetUpload(); return; }
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                // 严格解码：非 UTF-8 抛异常；BOM 由解码器自动剥离
+                var text = new TextDecoder('utf-8', {fatal: true}).decode(e.target.result);
+                reqUpload = {name: name, content: text};
+                $('#req-file-name').text(name + '（' + file.size + ' 字节）');
+                invalidateReqPreview();
+            } catch (err) {
+                msg('仅支持 UTF-8 文本文件', false);
+                resetUpload();
+            }
+        };
+        reader.onerror = function () { msg('读取文件失败', false); resetUpload(); };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // 入口③：JieDirPicker 文件模式（全局注入组件），会话内记住上次位置
+    function openLocalFilePicker() {
+        JieDirPicker.open({
+            title: '选择 requirements 文件（.txt）',
+            mode: 'file',
+            fileTypes: ['.txt'],
+            initialPath: reqState.lastPath || '',
+            onSelect: function (p) {
+                $('#req-local-path').val(p);
+                reqState.lastPath = p;
+                invalidateReqPreview();
+            }
+        });
+    }
+
+    function clearLocalPath() {
+        $('#req-local-path').val('');
+        invalidateReqPreview();
+    }
+
+    // 按当前 source 组装请求参数；无有效输入返回 null
+    function collectReqInput() {
+        if (reqState.source === 'upload') {
+            return reqUpload ? {source: 'upload', content: reqUpload.content} : null;
+        }
+        if (reqState.source === 'paste') {
+            var text = $('#req-paste-text').val() || '';
+            return text.trim() ? {source: 'paste', content: text} : null;
+        }
+        var p = ($('#req-local-path').val() || '').trim();
+        return p ? {source: 'path', path: p} : null;
+    }
+
+    // 渲染解析预览（服务端 valid==0 时已同步拒绝，此处仅处理 success 分支；
+    // 预览只展示有效条目，忽略 / 无法识别明细仅记录于任务日志）
+    function renderReqPreview(res) {
+        reqState.previewData = res;
+        var valid = res.valid || [];
+        $('#req-preview-summary').html('解析完成：将安装 <b>' + valid.length + '</b> 个包');
+        $('#req-valid-count').text(valid.length);
+        $('#req-valid-list').html(valid.map(function (s) {
+            return '<div><code>' + esc(s) + '</code></div>';
+        }).join(''));
+        $('#req-preview').show();
+    }
+
+    // 确认安装：后台任务 + JieTaskLog 实时日志（与 doInstall 同构）
+    function doReqInstall() {
+        if (reqState.installing) { return; }
+        var input = collectReqInput();
+        if (!input || !reqState.previewData) { return; }
+        reqState.installing = true;
+        var $btn = $('#btn-req-install').prop('disabled', true);
+        $.post(API_REQ_INSTALL, $.extend(input, {csrfmiddlewaretoken: CSRF})).done(function (res) {
+            reqState.installing = false;
+            $btn.prop('disabled', false);
+            if (!res || !res.success || !res.task_id) {
+                msg((res && res.message) || '创建安装任务失败', false, 3500);
+                return;
+            }
+            JieTaskLog.open({
+                title: 'requirements 安装（' + reqState.previewData.counts.valid + ' 个包）',
+                taskId: res.task_id,
+                width: '640px', height: '460px', logHeight: 300,
+                onSuccess: function () {
+                    layui.use('layer', function () {
+                        layui.layer.confirm('安装完成，是否返回包列表查看？',
+                            {icon: 1, title: '安装成功', btn: ['返回列表', '继续安装']},
+                            function (idx) { layui.layer.close(idx); window.location.href = URL_LIST; },
+                            function (idx) { layui.layer.close(idx); });
+                    });
+                },
+                onFail: function (result) { msg((result && result.message) || '安装失败', false, 3500); }
+            });
+        }).fail(function () {
+            reqState.installing = false;
+            $btn.prop('disabled', false);
+            msg('请求失败，请检查网络', false);
+        });
+    }
+
+    $('#req-entry-switch .btn').on('click', function () {
+        switchEntry($(this).data('entry'));
+    });
+    $('#btn-req-pick-file').on('click', function () { $('#req-file-input').click(); });
+    $('#req-file-input').on('change', function () {
+        if (this.files && this.files[0]) { handleFileSelected(this.files[0]); }
+    });
+    $('#btn-req-pick-local').on('click', openLocalFilePicker);
+    $('#btn-req-clear-path').on('click', clearLocalPath);
+    $('#req-paste-text').on('input', invalidateReqPreview);
+    $('#btn-req-parse').on('click', function () {
+        var input = collectReqInput();
+        if (!input) { msg('请先选择文件、粘贴内容或选择本机文件', false); return; }
+        var $btn = $(this).prop('disabled', true);
+        $.post(API_REQ_PARSE, $.extend(input, {csrfmiddlewaretoken: CSRF})).done(function (res) {
+            $btn.prop('disabled', false);
+            if (!res || !res.success) { msg((res && res.message) || '解析失败', false, 3500); return; }
+            renderReqPreview(res);
+        }).fail(function () { $btn.prop('disabled', false); msg('请求失败，请检查网络', false); });
+    });
+    $('#btn-req-install').on('click', doReqInstall);
+    $('#btn-req-cancel').on('click', invalidateReqPreview);
+});
+</script>
+{% endblock %}

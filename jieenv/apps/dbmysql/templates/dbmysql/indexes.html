@@ -1,0 +1,138 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2">
+            <i class="fa fa-user"></i> {{ conn_info.user }}@{{ conn_info.host }}:{{ conn_info.port }}
+        </span>
+        <span class="badge badge-secondary py-2"><i class="fa fa-database"></i> {{ db }}</span>
+        <span class="badge badge-dark py-2"><i class="fa fa-table"></i> {{ table }}</span>
+    </div>
+    <div class="card-tools">
+        <a href="{% url 'dbmysql:tables' conn_id db %}" class="btn btn-outline-secondary btn-sm"><i class="fa fa-arrow-left"></i> 表列表</a>
+        <a href="javascript:;" id="btn-logout" class="btn btn-outline-danger btn-sm"><i class="fa fa-sign-out-alt"></i> 退出连接</a>
+    </div>
+</div>
+
+{% if db_error %}
+<div class="alert alert-danger">操作异常：{{ db_error }}</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title"><i class="fa fa-list-ul"></i> 索引列表 - {{ db }}.{{ table }}</h3></div>
+            <div class="card-body p-0">
+                <table class="table table-striped table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>索引名</th><th>字段</th><th>类型</th><th style="width:100px">唯一</th><th style="width:100px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+{% for idx in indexes %}
+                        <tr>
+                            <td><b>{{ idx.key_name }}</b></td>
+                            <td><code>{{ idx.columns|join:", " }}</code></td>
+                            <td>{{ idx.index_type|default:"-" }}</td>
+                            <td>{% if idx.non_unique %}<span class="text-muted">非唯一</span>{% else %}<span class="text-success">唯一</span>{% endif %}</td>
+                            <td>
+                                <a href="javascript:;" class="btn btn-outline-danger btn-sm btn-drop-idx" data-name="{{ idx.key_name }}">删除</a>
+                            </td>
+                        </tr>
+{% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">该表暂无索引</td></tr>
+{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title"><i class="fa fa-plus-circle"></i> 添加索引</h3></div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label small">索引名</label>
+                        <input id="idx-name" class="form-control form-control-sm" placeholder="idx_name">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small">字段（逗号分隔）</label>
+                        <input id="idx-cols" class="form-control form-control-sm" placeholder="col1, col2">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">类型</label>
+                        <select id="idx-type" class="form-control form-control-sm">
+                            <option value="INDEX">普通索引</option>
+                            <option value="UNIQUE">唯一索引</option>
+                            <option value="FULLTEXT">全文索引</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button id="btn-add-idx" class="btn btn-success btn-sm btn-block"><i class="fa fa-plus"></i> 添加</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_INDEX_ACTION = '{% url 'dbmysql:api_index_action' conn_id %}';
+    var DB_NAME = '{{ db }}';
+    var TABLE_NAME = '{{ table }}';
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    $('#btn-logout').on('click', function () {
+        $.post('{% url 'dbmysql:api_logout' %}', {conn_id: '{{ conn_id }}'}).done(function (res) {
+            window.location.href = res.redirect || '{% url 'dbmysql:index' %}';
+        });
+    });
+
+    $('.btn-drop-idx').on('click', function () {
+        var kn = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定删除索引 "' + kn + '" 吗？', {icon: 3, title: '删除索引'}, function (idx2) {
+                layer.close(idx2);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post(API_INDEX_ACTION, {action: 'drop', db: DB_NAME, table: TABLE_NAME, index_name: kn})
+                    .done(function (res) {
+                        layer.close(loadIdx);
+                        msg(res.message, res.success);
+                        if (res.success) { setTimeout(function () { window.location.reload(); }, 800); }
+                    });
+            });
+        });
+    });
+
+    $('#btn-add-idx').on('click', function () {
+        var n = $('#idx-name').val().trim();
+        var c = $('#idx-cols').val().trim();
+        var t = $('#idx-type').val();
+        if (!n || !c) { msg('请填写索引名和字段', false); return; }
+        var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.post(API_INDEX_ACTION, {action: 'create', db: DB_NAME, table: TABLE_NAME, index_name: n, columns: c, index_type: t})
+            .done(function (res) {
+                layer.close(loadIdx);
+                msg(res.message, res.success);
+                if (res.success) { setTimeout(function () { window.location.reload(); }, 800); }
+            });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block page_title %}{{ page_title|default:'' }}{% endblock %}</title>
+{% block favicon%}
+  <link rel="shortcut icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
+{% endblock %}
+  <link rel="stylesheet" href="{% static 'layui/css/layui.css' %}">
+  <link rel="stylesheet" href="{% static 'plugins/fontawesome-free/css/all.min.css' %}">
+  <link rel="stylesheet" href="{% static site_skin.pace_theme_css %}">
+  <link rel="stylesheet" href="{% static 'css/adminlte.min.css' %}">
+  <link rel="stylesheet" href="{% static 'css/jiecore.css' %}">
+  <style>
+    html, body {
+      background: #f4f6f9;
+      padding: 12px;
+      margin: 0;
+    }
+    .embed-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0 12px 0;
+    }
+    .embed-header h4 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #343a40;
+    }
+    .embed-close-btn {
+      cursor: pointer;
+      color: #6c757d;
+      font-size: 18px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all .15s;
+    }
+    .embed-close-btn:hover {
+      color: #dc3545;
+      background: rgba(220, 53, 69, .08);
+    }
+    .embed-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .embed-card .card-body {
+      padding: 16px 20px;
+    }
+    .embed-card .card-footer {
+      padding: 12px 20px;
+      background: #fafafa;
+      border-top: 1px solid rgba(0,0,0,.06);
+    }
+  </style>
+  {% block css_files %}{% endblock %}
+  {% block css_code %}{% endblock %}
+</head>
+<body>
+  <span style="display:none">{% csrf_token %}</span>
+
+  {% if show_close|default:True %}
+  <div class="embed-header">
+    <h4>{% block embed_title %}{{ page_title|default:'' }}{% endblock %}</h4>
+    <i class="fas fa-times embed-close-btn" id="embed-close-btn" title="关闭"></i>
+  </div>
+  {% endif %}
+
+  {% block page_content %}{% endblock %}
+
+<script src="{% static 'plugins/jquery/jquery.min.js' %}"></script>
+<script src="{% static 'plugins/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'plugins/pace-progress/pace.min.js' %}"></script>
+<script src="{% static 'js/adminlte.min.js' %}"></script>
+<script src="{% static 'layui/layui.js' %}"></script>
+<script src="{% static 'js/jiecore_ops.js' %}"></script>
+<script src="{% static 'js/jiecore_dirpicker.js' %}"></script>
+<script src="{% static 'js/jiecore_tasklog.js' %}"></script>
+<script src="{% static 'js/jiecore_utils.js' %}"></script>
+<script>
+  $('#embed-close-btn').on('click', function() {
+    if (parent && parent.layui && parent.layui.layer) {
+      parent.layui.layer.closeAll('iframe');
+    }
+  });
+</script>
+{% block js_files %}{% endblock %}
+{% block js_code %}{% endblock %}
+</body>
+</html>

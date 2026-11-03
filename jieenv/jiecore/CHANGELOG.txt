@@ -1,0 +1,782 @@
+v1.37.0
+- 修正应用骨架模板 createapp（app_template/）与项目初始化模板 jieinit（config_template/），
+  确保新生成应用和空项目从一开始就符合 jiecore 规范：
+  · app_template/app_meta.py-tpl: viewname 默认填 {{ app_name }}:index（之前为空）；
+    dependencies 默认含 jiecore>=1.36.0（之前全注释）；新增 is_enabled: True；
+    菜单结构与 views.py menu_id 对齐（扁平菜单方案）
+  · app_template/apps.py-tpl: 新增 label = '{{ app_name }}'（Django AppConfig 惯例）
+  · app_template/ext_hooks.py-tpl: 新增 def register(): pass 入口函数
+    （规范 7.8 强制要求，框架自动扫描调用；之前缺失会导致 AttributeError）
+  · app_template/config.py-tpl: 从 1 行 APP_LABEL 扩展为完整路径常量
+    （DATA_DIR / TMP_DIR + 自动 mkdir）
+  · app_template/views.py-tpl: menu_id 从 '{{ app_name }}-index' 改为 '{{ app_name }}'，
+    与 app_meta 扁平菜单结构对齐
+  · config_template/constants.py: 补 _scan_platform_version() 平台版本扫描逻辑
+    （纯磁盘遍历骨架应用 app_meta.py，不依赖 Django settings）；
+    默认 SQLite 文件名 jieenvmaindb → jieenvmain.db
+  · config_template/bootstrap.py: _RECOVERY_COMMANDS 从 {refreshcache, jieinit}
+    扩展为 {refreshcache, jieinit, migrate, checkdeps, apprescan}
+  · config_template/extra.py: SITE_TITLE 改为通用名 'JieCore项目'
+----------------------------------------------------------------------
+v1.36.0
+- system_ops.py 新增 open_terminal(path_prepend=None, activate_cmd=None, subprocess_env=None, cwd=None) 公共函数：
+  · 统一封装 subprocess.Popen 启动 cmd.exe /k 逻辑，消除 project_mgmt / python_installer / python_archive 三处重复实现
+  · 双模式调用：逐项参数（path_prepend/activate_cmd/env_extra）或完整 env dict（subprocess_env），自动合并环境变量
+  · PATH 前置 + activate.bat 双重保险，确保终端打开后 python/pip 命令正确命中目标环境
+----------------------------------------------------------------------
+v1.33.0
+- app_services 新增 reload_app_services(app_name)：重置 Django AppConfig._ready=False 后手动重调 ready()，
+  补 register_service 注册（与 disable_app 的 clear_app_services 对称）
+- app_manager.enable_app 末尾追加 reload_app_services 调用，修复"应用禁用再启用后，其 service 注册丢失"
+  的 bug——python_installer 禁用→启用后，创建项目页面的 Python 版本下拉恢复正常
+- 幂等安全：register_service 本身覆盖式注册，重跑无副作用；try-except 保护，单应用失败不影响其他
+----------------------------------------------------------------------
+v1.32.0
+- provider_catalog.invoke_provider 修复：ProviderResult 在 service 返回 success=False 时丢弃原始 data dict
+  改为直接构造 ProviderResult(success=False, data=原始dict)，保留 errors/warnings 数组
+  影响：所有 provider 的 preflight 错误展示闭环（engine.py 现在能拿到具体错误消息）
+----------------------------------------------------------------------
+v1.31.0
+- 所有安装/升级流程接入实时进度回调：pip 依赖安装、数据库迁移、文件复制、
+  注册、热加载、钩子等每一步均带阶段名 + 耗时，全链路可观测
+- 底层统一采用 progress_cb(message, progress=None, stage=None) 可选回调模式，
+  所有函数向后兼容——不传 progress_cb 时自动用空 lambda 忽略，零行为变化
+- 改造函数清单：
+  - pip_deps.py ensure_pip_dependencies(meta, progress_cb=None)
+  - app_manager.py run_migrations(app_name, progress_cb=None)
+  - app_manager.py install_from_path(app_path, progress_cb=None)
+  - app_manager.py install_from_zip(zip_path, progress_cb=None)
+  - version_manager.py _post_upgrade_app(..., progress_cb=None)
+  - version_manager.py upgrade_from_zip(app_name, zip_path, progress_cb=None)
+  - version_manager.py upgrade_platform_from_zip(zip_path, progress_cb=None)
+  - views.py do_install / do_upgrade / do_platform_upgrade 同步透传 progress_cb
+- 三个 HTTP 接口（api_app_install / api_app_manage(action='upgrade') /
+  api_platform_upgrade）接入 jiecore.tasks 后台任务框架，返回 {task_id}，
+  前端用 JieTaskLog.open({taskId}) 即可复用现有日志弹窗实时查看每步进度
+- 每步自动记录耗时，python_main 安装瓶颈（pip 下载 / migrate 执行耗时）
+  安装时即可直观暴露，无需猜测
+- 平台升级包注册表路径修复：
+  - upgrade_platform.py 新增 _detect_env_root()，三级优先级：
+    --env-root CLI > HKCU\\...\\Uninstall\\JieEnv-win\\InstallLocation
+    （install.bat 写入）> __file__.parent
+  - _gen_upgrade_sfx_config.py auto_upgrade.bat 模板同改：
+    reg query 读注册表 InstallLocation，fallback %~dp0，
+    显式传 --env-root 给 upgrade_platform.py
+  - 校验注册表路径有效性（存在 runtime\\python.exe），
+    无效则告警并 fallback
+----------------------------------------
+v1.30.7
+- 消除 jiecore 对业务应用的硬编码耦合，jiecore 可零改动移植到任意新系统：
+  - _get_platform_version() 从硬编码读 apps/mainapp 改为遍历所有 is_platform_fixed
+    骨架应用，找第一个声明了 platform_version 字段的，全没有回退 jiecore version
+  - 新增 _get_platform_changelog_text()，同样遍历骨架应用目录找 platform_changelog.txt
+  - config/constants.py PLATFORM_VERSION 从硬编码 mainapp 改为纯磁盘扫描（不依赖
+    Django settings 或 jiecore 模块，避免循环导入），扫 APPS_DIR 所有子目录 +
+    BASE_DIR/jiecore 的 app_meta.py
+  - app_hooks.py 两处 if app_name in ('jiecore', 'mainapp') 分支（实际是 bug：
+    mainapp 在 APPS_DIR 不在 BASE_DIR）改为直接用 get_core_app_dir(app_name)
+  - views.py 平台升级页 changelog 从硬编码 mainapp 路径改为调
+    _get_platform_changelog_text() 动态获取
+- jiecore 现在零业务应用名硬编码（mainapp、appmanage、dbmysql 等），
+  所有行为由各应用 app_meta.py 字段（is_platform_fixed / platform_version /
+  is_root）和目录文件（platform_changelog.txt）声明
+----------------------------------------
+v1.30.6
+- 升级覆盖策略从「删光重建」改为「合并覆盖」：upgrade_platform_from_zip
+  和 upgrade_from_zip 都改用 copytree(dirs_exist_ok=True)，升级包里
+  有什么文件就覆盖什么，原有独有文件保留（不再误删用户额外安装的应用
+  或自定义内容）；平台升级包路径规范：zip 顶层条目必须是 ENV_ROOT 下
+  的直接子项（jieenv/、requirements.txt、runtime/ 等），打包从项目根目录执行
+- 新增合并模式回滚安全机制：新增 _collect_dir_relpaths(dir) 收集原有文件
+  清单、新增 _rollback_merge(target, backup, original_files) 先恢复备份旧文件
+  再删掉升级期间新增的文件，确保回滚后状态与升级前完全一致
+----------------------------------------
+v1.30.5
+- 废弃 is_core_app / is_core 标记：与 is_platform_fixed 合并，后者同时承担骨架保护
+  + 不可禁用/卸载/删除 + 平台升级后处理 语义；删除 _CORE_APP_CACHE 缓存、
+  删除 is_core_app 函数、底层保护调用与 sync_from_disk/create_app 初始化逻辑
+  全部改用 is_platform_fixed_app；is_framework_app（位置特例）保持不变
+- 统一后处理：新增 _post_upgrade_app(app_name, *, old_version, new_version,
+  skip_pip) 内部函数，迁移 + 钩子 + pip + 注册 + 缓存（含 refresh_cache_from_db）
+  + purge_app_modules 一条龙；upgrade_from_zip 和 upgrade_platform_from_zip 共用，
+  消除了原来两处后处理代码重复
+- 修复平台升级 run_app_upgrade_hook 参数 bug：原 old_version 从覆盖后磁盘读取
+  导致 old=new；现覆盖前先收集各固定APP旧版本，钩子传正确的 old -> new 值
+- 修复平台升级每个固定APP处理后漏调 refresh_cache_from_db，统一函数已补齐
+----------------------------------------
+v1.30.4
+- 恢复独立平台升级页：PlatformUpgradeView 类、
+  jiecore/platform_upgrade_page 路由、jiecore/templates/jiecore/platform_upgrade.html
+  模板重新恢复；平台升级入口回到独立页面，保持卡片 + 左右两栏布局
+-----------------------------------------
+v1.30.3
+- 彻底删除旧独立平台升级页：移除 PlatformUpgradeView 类、
+  jiecore/platform_upgrade_page 路由、jiecore/templates/jiecore/platform_upgrade.html
+  模板文件；底层 do_platform_upgrade / api_platform_upgrade /
+  upgrade_platform_from_zip 保留，供 appmanage 前端按钮调用
+- 保留 jiecore/api/platform/upgrade 路由（POST），为 appmanage 升级按钮提供后端
+-----------------------------------------
+v1.30.2
+- 新增 is_platform_fixed_app() 函数（app_manager.py），从磁盘 app_meta.py 读取
+  is_platform_fixed 标记，带 mtime 缓存（仿照 is_core_app 模式）
+- 三个骨架应用（jiecore / mainapp / appmanage）app_meta.py 统一加
+  "is_platform_fixed": True 标记，明确属于平台统一打包的骨架集合
+- python_main / python_archive 自动从骨架集合移出，恢复为可选业务应用
+-----------------------------------------
+v1.30.1
+- PlatformUpgradeView 新增读取 mainapp/platform_changelog.txt 并注入模板
+- 平台升级页布局调整：升级操作区与更新日志改为上下排列，日志全宽无滚动条
+-----------------------------------------
+v1.30.0
+- 平台版本来源从 jiecore/app_meta.py 的 version 字段迁移到 mainapp/app_meta.py
+  的 platform_version 字段；config/constants.py、desktop.py、build_release.bat
+  同步修改读取逻辑，回退链保持不变
+- 新增独立的「平台升级包」通道：文件名 platform-<version>.zip，与应用升级包并行
+  scan_upgrade_packages() 自动识别 platform- 前缀并走对应校验
+- version_manager.py 新增：_PLATFORM_FIXED_APPS、_get_platform_version()、
+  check_platform_upgrade_available()、upgrade_platform_from_zip()
+- 平台升级无白名单覆盖规则：解压后顶层条目直接映射 ENV_ROOT
+- 平台升级后自动执行固定APP（jiecore/mainapp/python_main/python_archive）
+  的迁移、钩子、pip 依赖、注册信息更新与缓存/菜单/路由刷新
+- 平台升级失败自动回滚（覆盖所有已覆盖条目）
+- 废弃 jiecore 升级自动附带 PLATFORM_FILES（server.py/desktop.py/config/
+  requirements.txt）的旧机制，相关备份/覆盖/回滚/消息代码全部移除
+- views.py 新增 do_platform_upgrade()、api_platform_upgrade() 接口
+  （支持上传或直接 zip_path）
+- views.py 新增 AppListView（应用列表页）、PlatformUpgradeView（平台升级页）
+  以及 sync_apps / refresh_cache / install / enable / disable / uninstall /
+  delete 七个 POST 包装函数，解决 app_list.html 引用缺失路由导致的
+  NoReverseMatch
+- urls.py 新增路由：app/list/、platform/upgrade/、app/sync/、app/refresh/、
+  app/install/、app/<app>/enable/、app/<app>/disable/、app/<app>/uninstall/、
+  app/<app>/delete/、api/platform/upgrade/
+- 新增模板 jiecore/templates/jiecore/platform_upgrade.html（独立平台升级页，
+  当前版本展示 + zip 上传 + 检测到的 platform 升级包列表）
+- app_list.html 升级包区域适配 platform 前缀区分展示（红色平台 badge、
+  独立升级按钮、调用 api_platform_upgrade 接口）
+- layout_main.html 顶部导航栏版本号链接改为跳转平台升级页
+- build_app.bat 新增 platform 打包分支：读取 mainapp platform_version，
+  打包 server.py/desktop.py/requirements.txt/config/jieenv/jiecore/
+  jieenv/apps/mainapp 为 build/platform-<version>.zip
+- build_app.bat 删除 jiecore 打包时自动附带 PLATFORM_FILES 的旧代码块
+-----------------------------------------
+v1.29.0
+- utils增加转换命令字节转码公共函数
+-----------------------------------------
+v1.28.0
+- 增加 utils.format_size 公共函数,转换文件大小
+-----------------------------------------
+v1.27.0
+- 移除通用测速模块 speed_test.py：服务器测速结果不能保证准确（受瞬时网络、
+  CDN 调度、Range 支持差异等影响），据此选择镜像会给用户造成错误信心，
+  故删除 jiecore/speed_test.py（test_url_speed / test_urls_speed）；
+  python_installer / python_archive 下载源自动探测改回按顺序 HEAD 探测取第一个可达镜像
+- jiecore 开发文档移除模块总览表 speed_test 行与 2.20 节
+-----------------------------------------
+v1.25.0
+- system_ops.py 新增环境变量公共操作函数，从 python_installer/env_ops.py
+  抽取通用能力到框架层，供任何应用复用：
+  - broadcast_env_change: 广播 WM_SETTINGCHANGE 刷新环境变量缓存
+  - split_path: PATH 原始值拆条目去空
+  - get_path_entries: 从注册表读取有效 PATH 条目（系统+用户，展开环境变量）
+  - set_system_path: UAC 提权写系统 PATH（HKLM）
+  - remove_from_path: 从 PATH 中删除指定目录条目（规范化比较，保留原始写法）
+- python_installer/env_ops.py 改为从 jiecore.system_ops 导入上述公共函数，
+  删除已抽取的重复实现（_broadcast_env_change、_split_path、_set_system_path、
+  remove_from_path、_reg_value、_path_entries），保留 Python 专属逻辑
+  （py 启动器管理、PATH 中 Python 目录清洗、卸载程序等）
+- jiecore 开发文档 2.4 节新增环境变量公共操作函数文档与使用示例
+-----------------------------------------
+v1.24.0
+- 首页“最近操作”卡片新增“查看所有”链接，点击进入操作日志列表页
+  （/jiecore/operations/），支持分页浏览、单条删除、全部清空、查看详情
+- jiecore/views.py 新增 OperationLogListView（分页列表视图）、
+  api_op_log_delete（删除单条）、api_op_log_clear（全部清空）
+- jiecore/urls.py 新增路由：operations/、api/op-log/delete/<id>/、
+  api/op-log/clear/
+- 新增模板 jiecore/templates/jiecore/operation_log_list.html
+-----------------------------------------
+v1.23.0
+- 首页改造：从 CPU/内存/磁盘监控仪表盘改为「已安装环境概览 + 最近操作」
+  布局。HomeView 从 app_meta 菜单读取分类骨架，通过 call_hooks
+  ('mainapp.home.environments') 收集各应用注册的环境数据，按 menu_id
+  分组渲染卡片，空分类自动隐藏。移除 api_system_stats 视图和路由，
+  移除模板中 Chart.js 引用和所有轮询 JS
+- 新增通用操作日志机制：OperationLog 模型（jiecore/models.py）+
+  辅助模块 op_log.py（log_operation / get_recent_operations /
+  cleanup_old_operations），各应用通过 log_operation() 记录关键操作
+- 新增 0003_operationlog.py 数据库迁移
+- python_installer/ext_hooks.py 注册首页环境信息处理器，返回已安装
+  Python 版本列表（menu_id='runtimes'）
+- dbmysql/ext_hooks.py 新建，注册首页环境信息处理器，返回 MySQL 实例
+  列表（menu_id='db'），含端口连通性检测判断运行状态
+- python_installer/views.py 在安装/卸载操作中接入 log_operation()
+- dbmysql/views.py 新增 _install_worker 包装安装任务记录日志，卸载任务
+  末尾记录卸载，实例启停和服务操作中接入 log_operation()
+- python/views.py 在 pip 安装/升级/卸载、PyCharm 安装/卸载、
+  VSCode 安装/卸载中接入 log_operation()
+- jiecore/views.py 在 api_app_action（启用/禁用/卸载/删除/升级）
+  和 api_app_install（安装）中接入 log_operation()
+- home.html 环境卡片新增 total_count 支持，应用可截断 items 并
+  显示“共 N 个，查看更多”链接
+-----------------------------------------
+v1.22.0
+- 新增全局任务指示器（JieTaskBar）：导航栏右侧显示任务图标 + 活跃任务数
+  badge，点击展开下拉面板列出所有活跃和近期任务，点击任一任务重新打开
+  日志弹窗（JieTaskLog），解决关闭日志窗口后无法再查看后台任务进度的问题
+- tasks.py create_task() 新增 title 参数，存储人类可读标题供指示器展示；
+  新增 list_tasks() 返回活跃 + 近期已完成任务摘要列表
+- 新增 api_task_list 视图和 /jiecore/api/task-list/ 路由，供前端轮询
+- 新增 jiecore_taskbar.js 前端组件：定时轮询任务列表，渲染下拉面板，
+  支持任务状态图标/进度条/结果展示，点击任务项调用 JieTaskLog.open()
+- layout_base.html 导航栏右侧新增任务指示器图标和 badge，底部引入
+  jiecore_taskbar.js 并自动初始化
+- 各应用 create_task() 调用补充 title 参数：dbmysql（5处）、
+  python（8处）、python_installer（3处）
+-----------------------------------------
+v1.21.3
+- 应用安装流程改为安装即启用（is_enabled=True），用户主动安装无需额外
+  启用步骤；install_from_path 与 install_from_zip 同步修改
+- 安装流程补充根应用唯一性检查、菜单缓存刷新、扩展钩子加载，与启用
+  流程保持一致，安装完成后应用立即可用
+-----------------------------------------
+v1.21.2
+- build_release.bat 清理步骤改为只删除已知构建产物（%PKG_NAME%、_sfx_staging、
+  输出文件），不删除整个 build 目录，避免误删其他可能存在的文件
+- 新增 build_app.bat 应用打包工具：用法 build_app.bat <app_name>，支持打包
+  jieenv/apps/ 下的任意应用或 jiecore 框架（自动附带 server.py/desktop.py/
+  config/requirements.txt 等平台文件），输出 build/<appname>-<version>.zip，
+  格式与 upgrade_from_zip 完全兼容
+-----------------------------------------
+v1.21.1
+- jieinit 命令新增 --skip-config 参数：跳过覆盖 config/ 和改写 manage.py，
+  适用于 config/ 已存在且无需重置的场景（如 install.bat 首次初始化、
+  便携包解压后初始化数据库等）。跳过时同时跳过已格式化确认提示
+- install.bat 改用 jieinit --skip-config，避免覆盖用户已有的 config 配置
+-----------------------------------------
+v1.21.0
+- 新增平台版本管理机制：PLATFORM_VERSION 直接从 jiecore/app_meta.py 读取，
+  单一真值源，无需额外维护 version 文件。server.py 启动时打印平台版本，
+  desktop.py 窗口标题携带版本号，context_processors.py 注入 platform_version
+  供模板使用
+- version_manager.py 升级 jiecore 时支持一并更新平台文件（config/、入口等）：
+  升级包中除 jiecore/ 外还可携带 server.py/desktop.py/config/requirements.txt，
+  升级时自动覆盖到项目根目录；覆盖前备份、失败时回滚
+- 删除根目录 version 文件（版本号已由 jiecore/app_meta.py 统一管理）
+- jiecore 升级后强制标记 restart_required=True（已有逻辑），确保整个系统
+  （壳+web+django）重启后加载新的平台文件与版本
+- 修复桌面壳重启后总是跳转到首页的问题：新增 api_save_restart_url 接口，
+  前端在触发重启前将当前页面 URL 写入 tmp/restart_url.txt，壳的子进程重启
+  协调器读取该文件后导航回原页面而非首页；读取后自动删除文件
+-----------------------------------------
+v1.20.0
+- 修复桌面壳模式下“重启核心服务”从未生效的架构缺陷：原 handler 注册在壳
+  进程但 restart_server() 在子进程执行，跨进程不共享。新架构：子进程检测
+  JIEENV_SUBPROCESS_MODE 后写重启文件并退出，壳监视子进程退出后拉新+reload
+- server_process.py 新增 RESTART_REQUEST_FILE、SUBPROCESS_MODE_ENV、
+  _restart_lock；新增 is_subprocess_mode()、write_restart_request()、
+  remove_restart_request()、_close_db_for_shutdown()；start_stop_watcher
+  退出前关 DB 连接；_kill_tree 检查同进程组防杀自己
+- app_manager.py restart_server() 重构：新增子进程模式分支、重启互斥锁、
+  清 STOP_REQUEST_FILE、检查 close_wsgi_server 返回值、Popen try/except、
+  Linux 先关 WSGI、绝对路径 args、清环境变量、不提前写 PID、os._exit 前关 DB
+- desktop.py _ServerSubprocess 重构：注入 JIEENV_SUBPROCESS_MODE、stderr
+  句柄正确关闭、stop() 先优雅后强制、新增 terminate() 方法；_wait_ready
+  改为 HTTP ping 探测；_on_closing 改用 terminate()；
+  _install_subprocess_restart 替换为 _watch_subprocess_for_restart；
+  w.location 改为 w.load_url()
+- server.py 判重后清除 JIEENV_RESTARTING 环境变量
+-----------------------------------------
+v1.19.9
+- py_launcher 安装流程重构：不再下载完整 Python exe 安装包再提取
+  launcher，改为直接从 Python 官方 ftp 同目录下载 win32/launcher.msi
+  （约 1-3 MB）并用 msiexec 直接安装
+- python_versions.py build_version_entry() 新增 launcher_url 字段，
+  预拼接 <base>/<version>/win32/launcher.msi 直链，版本数据自带
+  launcher 下载地址，安装时直接使用无需重新拼接
+- python_download.py 新增 build_launcher_url() 拼接
+  win32/launcher.msi 直链；新增 resolve_launcher_download() 作为
+  回退通道（旧缓存无 launcher_url 时按镜像源重新拼接）
+- python_installer.py 新增 _download_launcher() 下载 launcher MSI 到
+  DOWNLOAD_DIR/launcher-{version}.msi；新增 _install_launcher_msi() 用
+  msiexec 静默安装 MSI 包
+- views.py api_install_py_launcher 从版本数据获取 launcher_url 并传递
+  给 worker；_py_launcher_worker 优先使用版本数据中的 launcher_url，
+  缺失时回退到 resolve_launcher_download；缓存检测改为 launcher-{version}.msi
+-----------------------------------------
+v1.19.7
+- py_launcher 安装改为两步确认流程：先检查本应用下载缓存
+  （tmp/python_installer/downloads/），有则直接安装；无则返回 need_download
+  提示，前端弹窗征求用户许可后带 confirmed=1 重新请求并下载+安装
+- _py_launcher_worker 错误处理增强：安装前检查 exe 是否存在、同时读取
+  stdout 和 stderr（/passive 模式错误输出到 stdout）、错误信息写入任务日志
+- desktop.py _on_closing 改为 fire-and-forget subprocess.Popen(['taskkill'...])
+  异步终止子进程，不再用 daemon 线程 + subprocess.run 同步等待，修复关窗卡顿
+-----------------------------------------
+v1.19.6
+- python_installer 已安装环境列表操作下拉新增“安装 py_launcher”按钮：
+  利用本地缓存或注册表 InstallSource 定位系统缓存的安装包，仅为指定版本
+  安装 py 启动器（api_install_py_launcher API + 前端确认弹窗）
+- detect.py _read_registry_detail() 扩展：枚举 InstallPath 下所有值
+  （含 WindowedExecutablePath）、读取 PythonCore 顶层值
+  （DisplayName/SupportUrl/Version）、Uninstall 注册表读取字段从 5 个
+  扩展到 13 个（新增 DisplayIcon/EstimatedSize/HelpLink/ModifyPath 等）
+- 修复 uninstall_exe 与注册表 UninstallString 断链：新增 _extract_exe_from_cmd()
+  从命令行字符串提取 exe 路径，将 UninstallString 映射到 uninstall_exe，
+  将 ModifyPath/InstallSource 映射到 cached_installer（Package Cache 缓存包）
+- import_detected() 探测导入时从注册表读取 uninstall_exe 和 cached_installer
+  而非写死空字符串
+- python_installer.py run_install() 安装后从注册表读取详细信息并存储
+-----------------------------------------
+v1.19.5
+- 缓存报错添加调用来源标识：bootstrap.py 缓存缺失错误显示调用者的
+  文件、行号、函数名（简洁一行），便于定位触发来源；
+  refreshcache.py 失败提示保持简洁
+- 精简 bootstrap.py：移除 ENABLED_APPS_BOOTSTRAP 及 _build_enabled_map
+  （已无运行时引用），config_template 同步更新
+-----------------------------------------
+v1.19.4
+- 桌面壳启动失败弹窗显示错误：desktop.py 的 _wait_ready() 新增子进程存活
+  检测，子进程因缓存缺失等立即退出时不再等待 60 秒超时，立即读取 stderr
+  并弹出 MessageBox 错误对话框，确保 pythonw.exe 无控制台场景下用户也能
+  看到错误提示；_read_server_stderr() 增加行级去重，auto-reloader 反复
+  派生子进程导致的重复错误只展示一次
+-----------------------------------------
+v1.19.3
+- 修复 config/urls.py 应用路由被 root_view 欢迎页截断的问题：root_view 注册在
+  path('') 且位于应用路由之前，Django URL 匹配先命中先生效，导致根应用（如
+  mainapp）的路由永远无法匹配，始终显示“尚未安装或启用任何应用”欢迎页。现改为
+  先构建应用路由再拼接到 urlpatterns 前面，确保应用路由优先于 root_view
+- 修复桌面壳模式下子进程启动错误不可见的问题：desktop.py 将子进程 stderr 从
+  DEVNULL 改为捕获到 jieenv/tmp/server_stderr.log，启动超时时读取内容展示给用户
+-----------------------------------------
+v1.19.2
+- 缓存文件（.cache/all_apps.json）被删除后，系统此前静默降级为空字典启动，
+  所有应用“消失”但无任何提示，用户无法定位问题。现新增 _db_has_data() 检测：
+  数据库有数据但缓存缺失时打印明确错误提示（含缓存路径和恢复命令）并 sys.exit(1)；
+  数据库无数据（首次部署）时仍用空字典继续。新增 _RECOVERY_COMMANDS 旁路机制，
+  refreshcache / jieinit 命令跳过检查，避免“需要运行命令恢复但无法启动 Django”
+  的死锁
+-----------------------------------------
+v1.19.1
+- 修复空项目初始化（jieinit）后访问根路径 / 报 404 的问题：新增 root_view 欢迎页
+  视图，无根应用时显示简洁的系统状态页面（服务已正常运行、暂无应用可展示）；
+  有根应用时其路由优先匹配，root_view 不会被调用
+- 修复缓存文件缺失时 bootstrap.py 直接 sys.exit(1) 导致 refreshcache 无法运行的
+  死锁问题：改为使用空字典继续加载，确保 Django 能启动，用户可执行 refreshcache
+  从数据库重建缓存
+- refreshcache 命令增加数据库未就绪时的容错：数据库表不存在时给出清晰提示
+  （请先执行 migrate），而不是抛出原始异常
+- config/urls.py 的 scan_all_ext_hooks() 增加 try/except 保护：数据库未初始化时
+  跳过扩展钩子扫描，避免启动失败
+-----------------------------------------
+- 移除所有启动期兜底与自愈功能：bootstrap.py 缓存不可用时直接报错退出（提示执行
+  jieinit），不再扫描磁盘兜底；apps.py 移除 startup_db_sync / sync_app_migrations /
+  _check_empty_registry，ready() 仅保留 PID 登记 + 停止监视 + 模板目录同步；
+  cache_handler.py 移除 ensure_core_tables()，refresh_cache_from_db() 简化为纯读
+  DB 写缓存，数据库不可用时直接抛异常；server_process.py 移除启动锁机制
+  （STARTUP_LOCK_FILE / acquire_startup_lock / release_startup_lock 等约 70 行）；
+  config/urls.py 移除 ENABLED_APPS_BOOTSTRAP 兜底和 empty_project_view 引导页；
+  删除 empty_project.html 模板
+- jieinit 命令重写：新增 config 文件模板函数，可生成完整 config/ 目录（含
+  __init__.py / security.py / constants.py / bootstrap.py / base.py / extra.py /
+  logging.py / log_handler.py / urls.py / wsgi.py / asgi.py / dev.py / production.py
+  共 12 个文件）；新增已格式化检测与确认机制（要求用户输入 'jiecore' 确认后才
+  重新格式化）；移除 mainapp 自动创建；错误不再静默（迁移/扫描/缓存失败时 raise）
+- 清理无用代码：apps.py 移除未使用的 import os / from django.conf import settings；
+  app_manager.py is_core_app() 文档移除“引导兜底”描述；desktop.py 注释移除
+  startup_db_sync 和“自愈”引用
+-----------------------------------------
+v1.16.3
+- 通用目录选择器（views.list_fs_dirs + jiecore_dirpicker.js）目录不存在时不再报
+  “目录不存在: xxx”错误：改为回退到盘符（分区）列表，并原样带回用户请求的路径
+  （requested / fallback 标记）。安装类场景常要把软件装到尚未创建的目标目录，
+  此前一打开选择器就报错、无法浏览盘符
+- jiecore_dirpicker.js 保留用户已键入的路径：回退盘符列表时输入框不被盘符根（空）
+  覆盖；目录模式下点“确定”时若未显式选中/浏览到目录，则采用输入框中用户键入的路径，
+  遵循“除非点确定，否则其他点击不修改用户已输入内容”的约定
+-----------------------------------------
+v1.16.2
+- 增加基础表单单供其他应用调用
+-----------------------------------------
+v1.16.1
+- 修复 ShellExecuteExW 恒返回错误码 5（拒绝访问）、一级 UAC 提权彻底失效的问题：
+  _SHELLEXECUTEINFOW 漏声明 dwHotKey 之后的 union { HANDLE hIcon; HANDLE hMonitor; }，
+  x64 下结构体只有 104 字节（真实为 112，hProcess 位于偏移 104），cbSize 校验通不过，
+  ShellExecuteEx 一律拒绝并级联降级到 PowerShell / schtasks，最终把“拒绝访问”抛给
+  用户。补上 hIcon 后实测 sizeof=112、hProcess offset=104、调用成功。dbmysql 的服务
+  启停走同一条 run_elevated 链路，一并修好
+- system_ops 为 shell32 显式绑定 restype/argtypes 并改用 WinDLL(use_last_error=True) +
+  ctypes.get_last_error()：restype 缺省为 c_int，而裸调 GetLastError 取到的可能是两次
+  调用之间其它 ctypes 调用留下的错误码
+- _run_elevated_native 补进程句柄守卫：verb 被 shell 扩展接管时 ShellExecuteExW 会成功
+  却不回填 hProcess，原实现退化成 WaitForSingleObject(NULL) 的假超时，现按“命令已下发
+  成功”返回 0
+- 修复 run_elevated 后备链路把用户取消 / 等待超时当成降级信号的问题：PermissionError 与
+  TimeoutError 都是 OSError 子类，通用 except OSError 会一并捕获，用户明明点了“否”
+  或命令已提权拉起只是等待超时，却还要再弹一次 UAC / 重复执行。两级 except OSError
+  之前均插入 except (PermissionError, TimeoutError): raise
+- _run_elevated_schtasks 增加 is_admin() 前置校验：创建 /ru SYSTEM 的计划任务本身需要
+  管理员权限，非管理员进程走到这一级必然“拒绝访问”，现抛出可操作的 PermissionError
+  而不是把 schtasks 的原始报错透给前端
+- schtasks /st 由固定 00:00 改为 now+1min：/ST 早于当前时间会打印“警告: 因为 /ST 早于
+  当前的时间，任务可能无法运行”污染错误输出；任务紧接着由 /run 立即触发，/st 取值
+  本身并不影响执行时机
+- layout_base.html 补隐藏的 {% csrf_token %}：全站从未渲染 csrf_token，
+  CsrfViewMiddleware 也就从不下发 csrftoken cookie，而 jiecore_ops.js 的 $.ajaxSetup
+  与各页面内联 fetch 都靠 document.cookie 读它来填 X-CSRFToken 请求头。cookie jar
+  全新的环境（pywebview / WebView2 隐私模式）下所有 POST 都被判为
+  Forbidden (CSRF cookie not set.)，前端只能看到笼统的“网络错误”
+- jiecore_tasklog.js 失败分支按钮类名 btn-default 改为 btn-secondary：AdminLTE 3 /
+  Bootstrap 4 已无 btn-default，沿用旧类名会让按钮只剩 .btn 基础样式、视觉上近乎纯文本
+- jiecore_tasklog.js 弹窗开放右上角关闭按钮（closeBtn 0→1）并新增 end 回调置 stopped
+  终止轮询：原 closeBtn:0 + shadeClose:false + btn:false 让弹窗只能靠“确定”按钮关闭，
+  一旦任务卡在失败分支就再也关不掉；轮询回调补 stopped 短路，避免响应回来时 DOM 已销毁
+  仍去操作
+------------------------
+v1.16.0
+- 新增公共后台任务模块 jiecore/tasks.py（内存级任务注册表 + 增量日志 + 后台线程
+  执行）：原先各应用各自维护一份结构相同的 tasks.py（dbmysql 与 lang_python 的
+  实现几乎逐字重复），轮询视图也在应用内重复实现（dbmysql 的 api_task_status 与
+  api_install_status 返回体构造完全一致），现收敛为一份公共能力
+- 新增通用轮询接口 GET /jiecore/api/task-status/<task_id>/（views.api_task_status），
+  路径与 jiecore_tasklog.js 中一直声明却从未被使用的 API_TASK_STATUS 常量精确
+  对齐；应用只需回传 task_id，不必再自建同构视图
+- jiecore_tasklog.js 支持 taskId 免配置轮询：未指定 taskUrl 时用 taskId 自动拼出
+  通用接口地址（末尾补斜杠，否则 Django 路由带斜杠会多一次 APPEND_SLASH 重定向
+  往返）；taskUrl 保留且优先，既有应用的模板调用一行未改
+- 修复增量日志游标在日志截断后永久断档的问题：原实现用 len(logs) 充当 log_index，
+  日志达 MAX_LOG_LINES(2000) 后从头截断使 len 恒定停在上限，客户端回传的 after
+  永远等于 len，此后所有新日志静默丢失。改为单调递增的 log_seq（只增不退）配合
+  log_dropped 计数，用 first_seq = seq - len(logs) + 1 反推现存首行序号；客户端落后
+  到已被丢弃的区间时返回现存的全部行，宁可重复一段也不漏行
+- 新增 task_payload(task, after) 统一构造轮询返回体，字段与前端约定一致
+  {success, status, progress, stage, logs, log_index, result}；dbmysql 的两处轮询 API
+  内部改为复用它，路由名保留以免改动模板里的 {% url %}
+- 新增 set_result() 与状态常量 STATUS_PENDING / RUNNING / SUCCESS / ERROR；任务新增
+  finished_at，已结束任务超过 TASK_TTL_SECONDS(3600) 由 create_task 惰性回收（两次
+  回收间隔不少于 _CLEAN_INTERVAL=60 秒），pending / running 无论多久都不回收——
+  下载类任务跑几十分钟是正常的，误回收会让前端直接收到“任务不存在”
+- after 参数容错：非数字、负数、空值一律按 0 处理，不抛异常
+- 模块只依赖标准库（uuid / time / threading / datetime），不读 settings、不碰模型，
+  可在 django.setup() 之前导入，无循环导入风险；create_task / get_task / append_log /
+  set_progress / run_in_thread 的签名与既有应用实现完全兼容，应用侧调用点未改动
+------------------------
+v1.15.0
+- 修复 is_process_alive() 在 Windows 上把僵尸进程误判为存活的问题：进程退出后
+  若仍有其他进程持有其句柄（父进程未回收、调试器附着等），内核对象会继续存在，
+  OpenProcess 照样返回有效句柄，但 taskkill 与进程枚举都已找不到它。实测下陈旧
+  PID 文件会让 stopserver 报 taskkill 退出码 128 且永远清不掉，也会让单实例判重
+  把幽灵服务当真服务。改为再查 GetExitCodeProcess，STILL_ACTIVE(259) 之外即视为
+  已终止；OpenProcess 拒绝访问（错误 5）按存活处理，与 POSIX 分支的
+  PermissionError 语义一致；kernel32 调用补齐 restype/argtypes，避免 64 位下
+  句柄被按 c_int 截断
+- stop_server() 兜住 taskkill 报“找不到进程”的情况：复查目标确已消失则按已停止
+  处理并清理 PID 文件，仍存活却杀不掉（如权限不足）照旧上报失败；两条提前返回
+  路径补上停止请求文件清理，残留的请求文件会让下一个启动的服务自杀
+- Windows 下补出优雅退出通道：新增停止请求文件 tmp/server.stop，服务进程内跑一个
+  监视线程（start_stop_watcher），轮询到属于自己的请求后关闭 waitress 释放端口 →
+  flush 日志 → 退出，超时未退才降级为 taskkill /F /T。此前 Windows 只有强杀一条路，
+  会跳过 atexit、日志 flush 与 SQLite WAL checkpoint，而 Linux 早有 SIGTERM → 超时 →
+  SIGKILL 的对称流程；stopserver 新增 --timeout 指定优雅退出等待秒数（默认 10）
+- PID 文件新增 graceful 字段标记目标是否跑着监视线程：runserver 登记的是父（监视）
+  进程，停止请求通知不到真正处理请求的重载子进程，故 graceful=False 直接强制终止，
+  startserver 派生 runserver 时显式传该值（缺省按自身 argv 推断会得出错误结果）
+- 重启语义收敛为策略注册：新增 register_restart_handler()，desktop.py 改为注册
+  “进程内就地重启”，不再替换 jiecore.views / app_manager 的模块属性。原做法因
+  views.py 用 from ... import restart_server 已把名字绑进自己命名空间，必须两处都打
+  补丁，任何新增导入点都会静默失效并回退到杀进程重启
+- 桌面壳就地重启补上与冷启动等价的启动期自愈（缓存对账 + 全部启用应用迁移）：
+  就地重启不重跑 AppConfig.ready()，此前会出现“手工换了带新模型的应用文件后点
+  重启，壳模式下表不会建”而进程重生模式会建的行为差异；同时改为返回结果字典，
+  并在仅自启模式下注册（附着模式注册了也不会被调用，只会让职责产生歧义）
+- views.api_restart 去掉自带的 runserver 终止分支，统一委托 restart_server()，消除
+  两处各写一份 os._exit 造成的“谁是真相”歧义；所有 os._exit 前补 logging.shutdown()
+- 新增 get_running_service() / is_service_running() 作为“服务是否已在运行”的单一真值
+  源（校验存活 + start_time 防 PID 复用），server.py / startserver / desktop.py 共用，
+  取代原先三套互不感知的判定（PID 文件 / 命名互斥体+端口探测 / 端口硬撞重试）
+- server.py 增加启动前判重：已有登记在案且存活的服务时拒绝启动并打印原因。判重
+  必须在 django.setup() 之前——ready() 在 setup 期间就会 write_pid_file()，之后再查
+  读到的是自己刚写的记录（实测第二个 server.py 照样启动并改写了 PID 文件）；也不能
+  只靠“端口绑定失败重试 10 次”硬撞，Windows 下 waitress 带 SO_REUSEADDR，第二个
+  进程会直接从第一个手里把端口抢走且不报错，旧进程退化为活着却收不到请求的幽灵。
+  restart_server 拉新进程时注入 JIEENV_RESTARTING 让新进程跳过判重，避免被自己的
+  单实例保护拦住
+- desktop.py 判重同样改为以 PID 登记为主、端口探测为辅，并等登记的服务就绪后再开窗，
+  修掉“run.bat 起服务后立即双击 run_desktop.bat，端口尚未绑定时被误判为空闲、桌面壳
+  自启 waitress 与真实服务撞端口”
+- startup_db_sync 增加独占锁 tmp/startup_sync.lock：多个服务进程同时启动时只让一个执行
+  自愈，其余跳过，避免并发 migrate 在 SQLite 上撞 database is locked；持有者已死、锁内容
+  损坏或 start_time 不符（PID 复用）时自动抢占，不会留下永久死锁；锁文件创建失败则
+  退化为无锁执行，不阻塞启动；同进程可重复进入，故就地重启可以直接复用
+- 优雅关闭 waitress 的逻辑抽为 close_wsgi_server()，由停止监视线程、restart_server 与
+  桌面壳关窗共用；服务器对象经 register_wsgi_server() 登记，未登记时回退到
+  __main__._waitress_server（server.py 的既有约定）
+- 优雅退出日志用 WARNING 而非 INFO：server.py 走 config.production，级别被
+  apply_log_level('WARNING') 压住，INFO 不落盘，“服务为何停了”不能在生产模式下静默消失
+------------------------
+v1.14.0
+- 修正 PID 文件被桌面壳覆盖导致 stopserver 停错对象的问题：run.bat 起服务后
+  再双击 run_desktop.bat，desktop.py 会在 django.setup() 期间把自己的 PID 写进
+  tmp/server.pid，此后 setopserver.bat 杀掉的是桌面窗口，server.py 仍在监听端口
+- PID 文件由纯数字升级为 JSON，记录 pid / role / start_time / argv / written_at，
+  改为写临时文件后 replace 原子落盘；read_pid_file() 与 is_server_process() 保留
+  为兼容接口，旧格式纯数字文件按 {pid: N} 读取，startserver / stopserver /
+  restart_server 的调用方式均无需改动
+- 新增进程角色显式声明（环境变量 JIEENV_ROLE = server / desktop / cli），
+  优先级高于按 argv 推断，避免“入口脚本改名或被包装即失效”；未声明时按
+  入口文件名推断（server.py / desktop.py / manage.py / runserver），其余未知
+  入口保守按 server 处理，一次性脚本应显式设 JIEENV_ROLE=cli
+- write_pid_file() 增加归属保护：已有存活进程且角色不同时拒绝覆盖并告警，
+  返回是否写入成功
+- stop_server() 停止前校验进程创建时间（start_time），避免服务崩溃后 PID 被
+  系统回收复用、taskkill /F /T 误杀无关进程及其整个进程树；校验仅对读自 PID
+  文件的目标生效，显式 --pid 由调用方自负其责；psutil 不可用或旧格式无
+  start_time 时自动退化为原有的只判存活行为
+- desktop.py 端口探测提前到 django.setup() 之前，附着模式下声明为 cli 角色：
+  既不登记 PID，也不调度 startup_db_sync，消除与真实服务并发迁移争抢 SQLite 锁
+- startserver 登记派生进程时显式传 ROLE_SERVER：本命令自身角色为 cli，
+  不传会把 PID 文件里的 role 记错
+- server.py 启动时显式声明 JIEENV_ROLE=server，不再依赖按 argv[0] 推断
+- config/production.py 的 ALLOWED_HOSTS 由 ['127.0.0.1'] 改为 ['*']：server.py
+  以 0.0.0.0 监听且注释承诺局域网访问，原配置会让局域网请求全部被拦成
+  DisallowedHost(400)，且与桌面壳走的 config.dev 行为不一致
+------------------------
+v1.13.0
+- 新增应用信息重扫能力 AppManager.rescan_app() 与配套命令
+  python manage.py apprescan <app_name>... / --all：重新读取磁盘 app_meta.py，
+  把已注册应用的 display_name / version / description / url_prefix /
+  dependencies / changelog / is_root 刷新为磁盘当前值
+- 补齐 sync_from_disk() 的语义空档：后者只登记新出现与清理已消失的应用，
+  已注册应用的版本与描述一律不覆盖，导致手工改 app_meta.py 或直接替换应用
+  文件（未走升级包）后注册表长期停留在旧值
+- 重扫按 upgrade_from_zip 的安全顺序执行：pip 依赖 → 数据库迁移 → 注册信息
+  落库。pip 先于迁移，因为迁移需导入 models.py，缺第三方包会直接失败；
+  迁移失败则不写注册表，避免出现“版本已刷新但库结构还是旧的”
+- 缺失的 pip 第三方包自动安装（复用 pip_deps.ensure_pip_dependencies，带
+  Django 版本 constraints 与包名合法性校验）；模型有变动时自动 migrate，
+  --makemigrations 可显式开启现场生成迁移文件（默认遵循“应用须自带迁移
+  文件”约定不生成）
+- is_enabled 一律不覆盖：启用态是运行期状态，只由 enable_app/disable_app 变更，
+  按 app_meta 声明覆盖会把管理员显式禁用的应用重新拉起。仅当应用在磁盘
+  存在却尚未入注册表时，才按 app_meta 的 is_enabled/is_core 定初始启用态
+- is_root 变更受“全项目只一个根应用”约束，与现有根应用冲突时保留原值并告警，
+  避免 config/urls.py 出现两个根路由互相覆盖
+- 新增 --dry-run（只报告差异，不安装、不迁移、不写库，可重复执行验证幂等）、
+  --no-deps、--no-migrate 选项；重扫按模型字段 max_length 截断超长值，
+  避免 SQLite 下不报错、换成 MySQL 严格模式后才暴露的写入失败
+- run_migrations() 改为返回 bool（无数据库模式视为成功，无法注册或迁移失败
+  返回 False），既有调用方均忽略返回值，向后兼容
+------------------------
+v1.12.0
+- 修复数据库模式下缓存文件缺失（首次部署 / .cache 被清理 / .cache 已在
+  .gitignore 中）引发的引导死锁：INSTALLED_APPS 缺应用、根路由未挂载导致整站
+  404，且 refreshcache 因数据表未建立而报 no such table: jiecore_appregistry
+- config/constants.py 注册表加载改为三级兜底：缓存文件（可读即为权威，
+  行为与开销与原先完全一致）→ 直连数据库只读 AppRegistry → 扫描
+  apps/*/app_meta.py；后两级结果原子回写缓存文件。数据库直读优先级必须
+  高于磁盘扫描，否则会把数据库中已显式禁用的应用误判为启用
+- app_meta.py 改由 importlib.util 按文件路径加载，不执行包 __init__.py 与其
+  Django 依赖，保证 settings 加载期（Django 尚未 setup）绝对安全
+- 新增 settings.ENABLED_APPS_BOOTSTRAP，config/urls.py 在缓存不可读或内容
+  格式异常时回退使用，保证根应用路由始终挂载、应用管理页可达
+- cache_handler 新增 ensure_core_tables()；refresh_cache_from_db() 增加自愈：
+  数据表缺失时先 migrate jiecore 建表，数据库为空时以磁盘 apps/ 对账入库，
+  并返回是否执行了引导（已就绪环境下仅多一次 SELECT，不写库）
+- jiecore apps.py 新增启动期自愈 startup_db_sync（后台线程）：注册表引导 →
+  应用迁移同步 → 菜单缓存补建，取代原 sync_app_migrations 定时器
+- 激活 app_meta 的 is_core 字段（原为声明但无人读取的死字段），语义定为
+  “项目骨架应用”：名称固定、不可或缺，但生命周期上仍按普通业务应用管理
+  （位于 apps/ 下、入注册表、支持热加载在线升级）
+- 新增 app_manager.is_core_app()（带 app_meta.py mtime 失效缓存，不入数据库）
+  与 is_framework_app()，明确区分两个正交概念：is_core = 骨架保护语义，
+  is_framework = 位置与生命周期特例（jiecore 专属）
+- disable_app / uninstall_app / delete_app 的保护判定由硬编码 == 'jiecore'
+  改为 is_core_app()，mainapp 等骨架应用同等受保护；同时清理 disable_app
+  中遗留的 is_root 注释代码
+- version_manager 升级流程局部变量 is_core 更名为 is_framework 并改用
+  is_framework_app() 判定，消除与 app_meta.is_core 的命名歧义，避免骨架
+  应用误入“跳过注册表更新 + 强制重启”分支而丧失热加载升级能力
+- app_manager.sync_from_disk 新发现的应用改为按 app_meta 声明的
+  is_enabled / is_core 确定初始启用态（原硬编码 False 导致引导后根应用仍未
+  启用）；仅影响尚未入注册表的应用，已注册应用的启用态与版本不会被覆盖
+- 第二级兜底与数据库引擎解耦：新增 _ENGINE_DRIVERS 驱动分派表（sqlite3 /
+  MySQLdb·pymysql / psycopg·psycopg2，与 private_databases.py 记录的推荐驱动
+  一致）与 _dbapi_connect_kwargs() 配置翻译，settings 加载期按 ENGINE 取驱动
+  直连，不再只认 SQLite；连接超时 3 秒，驱动未装、配置不全、库不可达、表未
+  建立一律降级到第三级磁盘扫描。Oracle / SQL Server 的连接超时语义无法在
+  settings 期可靠约束，贸然直连可能长时间阻塞启动，故暂不纳入
+- 兼容各引擎返回值差异：BooleanField 在 SQLite/MySQL 返回 0/1、PostgreSQL 返回
+  真 bool，JSONField 在 PostgreSQL 被驱动自动解析为 dict，统一由
+  _normalize_entry() 做类型归一，不让异常数据流入 INSTALLED_APPS 的构建
+- 表存在性不再查 sqlite_master：各引擎系统目录表差异很大（sqlite_master /
+  information_schema / pg_catalog），改为直接查询并捕获异常，通用且等价
+- app_manager.drop_leftover_tables 去掉写死的双引号标识符（MySQL 需反引号），
+  改用 connection.ops.quote_name()；外键检查开关按 vendor 分支，无会话级开关
+  的引擎（如 PostgreSQL）依赖逐表容错：不在 transaction.atomic() 内，Django
+  默认 AUTOCOMMIT，单条 DROP 失败不会污染后续语句
+- jiecore/tests.py 表存在性断言改用 connection.introspection.table_names()，
+  清理语句改用 quote_name 与占位符绑定，去除 SQLite 专有语法
+- apps.py 启动期自愈增加 is_server_process() 守卫：manage.py test 等一次性命令
+  不再调度定时器，避免在空的测试库上误判“首次部署”而用磁盘 app_meta 覆盖
+  .cache（会把数据库中已启用的应用写成未启用）
+- 第二级兜底全链路只降级不上抛：_import_db_driver 捕获范围由 ImportError 放宽到
+  Exception（驱动装了但导入即失败，如缺 DLL、依赖不全、版本不兼容），
+  _read_registry_from_db 的配置解析段补上异常兜底（PORT 配成非数字时 int()
+  抛 ValueError、DATABASES 结构异常时抛 AttributeError）。该函数跑在 settings
+  导入期，异常穿透会导致整个项目无法启动，与同模块其他兜底函数的防御强度
+  保持一致
+------------------------
+v1.11.3
+- open_env_variables() 改为两级策略：先弹 UAC 提权打开系统级环境变量，
+  用户拒绝则降级打开用户级环境变量
+------------------------
+v1.11.2
+- open_env_variables() 改为直达环境变量对话框：
+  ShellExecute(runas) 提权运行 rundll32 sysdm.cpl,EditEnvironmentVariables，
+  无需先进入系统属性页面
+------------------------
+v1.11.1
+- 修复 open_env_variables() 直接 Popen 因权限不足失败的问题，
+  改用 ShellExecuteW(runas) 触发 UAC 提权打开系统属性对话框
+------------------------
+v1.11.0
+- 新增 open_env_variables() 公共函数：打开系统属性-高级选项卡
+  （SystemPropertiesAdvanced.exe），用户可编辑用户和系统环境变量
+- 新增配套 JSON API：api/open-env-variables/（POST），供各应用前端直接调用
+------------------------
+v1.10.0
+- 新增 url_prefix 路由分组机制：应用可在 app_meta.py 中声明 url_prefix 字段，
+  动态安装时自动将应用 URL 挂载到父级前缀下（如 /db/dbmysql/、/runtimes/python/），
+  实现子应用路由归组到父菜单对应的 URL 空间
+- AppRegistry 模型新增 url_prefix 字段（含数据库迁移）
+- config/urls.py 动态发现逻辑支持读取 url_prefix 构建分组路由
+- menu_aggregator fallback 逻辑同步支持 url_prefix 构建正确回退 URL
+- update_enabled_cache / refresh_cache_from_db / sync_from_disk / install_from_path
+  均传播 url_prefix 字段
+- 应用模板 app_meta.py-tpl 新增 url_prefix 字段
+------------------------
+v1.9.4
+- 应用模板 views.py-tpl 和 index.html 增加宿主应用扩展钩子示例：
+  展示如何在视图中调用 call_hooks 收集处理器结果，以及如何在模板中遍历渲染扩展内容
+------------------------
+v1.9.3
+- 应用模板新增 ext_hooks.py-tpl：提供扩展钩子注册器的使用说明和示例代码，
+  默认不产生任何钩子数据，开发者可按需取消注释启用
+------------------------
+v1.9.1
+- 去掉应用模板config里有关于json的读写函数
+------------------------
+v1.9.0
+- 新增通用 JSON 持久化存储工具 json_storage.py：提供 JsonStore 类，
+  支持线程安全读写、原子写入（防数据损坏）、错误处理与日志记录
+- 支持列表模式（记录集合 CRUD）和字典模式（配置/键值数据）
+- 改进 cache_handler.write_json 为原子写入模式
+- dbmysql/storage.py 重构为基于 JsonStore，消除重复的底层读写代码
+-----------------------
+v1.8.3
+- ext_hook_registry 性能优化：call_hooks/get_hook_handlers/list_hooks 增加排序缓存，
+  仅在 register/unregister 时标记脏并重新排序，稳态调用从 O(n log n) 降为 O(1) 缓存命中
+- 开发文档 2.16 节增加完整端到端示例和基于类的视图使用方法
+-----------------------
+v1.8.2
+- 纠正app父模板引用问题和部分功能模板文件
+-----------------------
+v1.8.1
+- 修复 USING_AUTH=False 时 django.contrib.auth 相关组件仍被加载的兼容性问题
+- permissions.has_perm / sync_permissions 增加 USING_AUTH 防御检查，
+  未启用权限系统时权限检查直接返回 True、权限同步直接跳过
+- menu_aggregator.filter_menu_by_permission 增加 USING_AUTH 检查，
+  未启用权限系统时直接返回完整菜单树；用 getattr 安全访问 user 属性
+- app_manager 卸载清理逻辑中 Permission 模型导入改为 USING_AUTH=True 时才执行
+- config/base.py 中 auth 上下文处理器和密码验证器改为受 USING_AUTH 控制
+----------------------
+v1.8.0
+- 新增扩展钩子注册表 ext_hook_registry.py：宿主应用可声明命名扩展点，
+  其他应用通过 ext_hooks.py 注册处理器实现功能扩展（1:N 关系）
+- 应用启用时自动加载 ext_hooks.py，禁用/卸载/删除时自动清理注册的扩展钩子
+- refresh_menu_cache 时全量扫描加载各应用的扩展钩子
+----------------------
+v1.7.0
+- mainapp 移入 apps/ 目录，作为普通业务应用通过注册表统一管理
+- jiecore 去除对 mainapp 的全部特殊处理，仅 jiecore 自身作为核心应用
+- 项目级公共常量（DB_INSTALL_ROOT/LANG_INSTALL_ROOT/WORKSPACE_ROOT）
+  从 mainapp/project_config.py 移入 config/constants.py
+- get_core_app_dir/read_app_meta_from_disk/read_changelog_from_disk 等函数
+  仅对 jiecore 做特殊路径处理，其余应用统一走 apps/ 目录
+- 菜单聚合、模块清理、跨应用导入、权限同步等模块同步去除 mainapp 分支
+- 应用管理视图（appmanage）去除 mainapp 特殊分支，统一通过注册表获取
+----------------------
+v1.6.13
+- 增加直接打开指定文件夹api
+--------
+v1.6.12
+- 总模板右侧顶端固定
+--------
+v1.6.11
+- 修复菜章Path可能生成不正确的问题
+--------
+v1.6.10
+- 纠正APP应用模板里 app_meta.py 菜单的 path 不全
+--------
+v1.6.9
+- 纠正更新jiecore或mainapp后，误进行数据持久化问题
+--------
+v1.6.8
+- 更新初始框架html模板，增加自定义lOGO和favicon图标块
+--------
+v1.6.7
+- 更新jiecore更新自己的功能
+- 更新app模板，增加upgrade文件
+----------------------
+v1.6.6
+- 修改app模板，增加各种功能模板文件
+- 增加应用的hook功能
+- 增加应用功能注册和互相安全调用
+----------------------
+v1.6.5
+- 修改app模板，增加config文件
+----------------------
+v1.6.4
+- 弹出日志窗口确定按钮居中显示
+----------------------
+v1.6.3
+- start_service / stop_service 新增可选 on_step 回调参数，在开始执行、
+  申请 UAC 提权、执行成功等关键阶段逐步回报进度，供调用方展示实时提示
+----------------------
+v1.6.2
+- UAC 提权增强：ShellExecuteEx(runas) 直接提权失败（错误码 5，部分环境限制
+  python.exe 直接调用）时自动降级为 PowerShell Start-Process -Verb RunAs 中转；
+  提权无法拉起对话框时输出诊断信息（会话/UAC 策略/AppInfo 服务）并给出建议
+----------------------
+v1.6.1
+- 服务启停（start_service/stop_service）权限不足时自动弹出 UAC 对话框申请管理员
+  提权，由用户决定是否许可（runas + ShellExecuteExW 实现，拒绝时返回取消提示）；
+  新增 is_admin() 权限检测函数
+----------------------
+v1.6.0
+- 新增系统级公共操作模块 system_ops.py：Windows 服务状态查询（query_service_state）、
+  服务启停（start_service/stop_service）、资源管理器打开目录（open_directory），
+  配套 JSON API：api/fs/open-dir、api/service/state、api/service/<start|stop>，
+  供各插件应用后端导入或前端 AJAX 调用；使用与部署文档新增“jiecore 公共能力”章节
+----------------------
+v1.5.0
+- 通用目录选择器升级为目录/文件选择器：JieDirPicker.open 新增 mode（'dir'/'file'）
+  与 fileTypes（扩展名过滤）选项；api/fs/dirs 接口新增 files/exts 参数，
+  文件模式支持列文件、按扩展名过滤、直接定位文件全路径
+----------------------
+v1.4.0
+- 新增通用目录选择器公共功能（资源管理器风格）：后端列目录接口 api/fs/dirs，
+  前端组件 JieDirPicker（jiecore_dirpicker.js，全局引入，各应用可直接调用）
+----------------------
+1.3.1
+- 尝试改善重启服务功能
+----------------------
+v1.3.0
+- 增加自动安装依赖第三方包功能
+----------------------
+v1.2.0
+- 修复在不使用数据库模式下导入各种组件不匹配导致报错问题（config设置中覆盖）
+--------------------
+v 1.0.0
+基本完成框架

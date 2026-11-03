@@ -1,0 +1,106 @@
+{% extends "python_main/layout.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+  var layer = layui.layer, $ = layui.$, util = layui.util;
+
+  // 正确：用 util.on 监听 lay-on 属性
+  util.on(
+      'lay-on', {
+        reDetect: function () {
+          var load = layer.load(2, {shade: 0.3, shadeClose: false});
+          $.get("{% url 'python_main:api_pycharm_detail_refresh' %}", {}, function (res) {
+            layer.close(load);
+            if (res && (res.code === 0 || res.code === 200)) {
+              layer.msg('探测成功，正在刷新…', { icon: 1, time: 1000,shade: 0.3 }, function () {
+                location.reload();
+              });
+            } else {
+              layer.alert((res && res.msg) || '探测失败，请稍后重试', { icon: 2 });
+            }
+          }, 'json').fail(function () {
+            layer.close(load);
+            layer.alert('网络异常，探测失败', { icon: 2 });
+          });
+       },
+
+       resetDefault: function () {
+            layer.confirm(
+                '<span class="text-bold text-blue">确定要重置吗？</span></br>重置将清除Pycharm所有第三方插件、项目列表，配置等数据！</br><spann style="color:red;">谨慎操作！！</span>',
+                { title: '重置警告',icon: 3 },
+                function (index) {
+              layer.close(index);
+              var load = layer.load(2, {shade: 0.3, shadeClose: false});
+              $.get('{% url "python_main:api_pycharm_reset" %}', {}, function (res) {
+                    layer.close(load);
+                    if (res && (res.code === 0 || res.code === 200)) {
+                      layer.alert(res.msg, { icon: 1,shade: 0.3 });
+                    } else {
+                      layer.alert((res && res.msg) || '重置初始化失败，请稍后重试', { icon: 2, shade:0.3 });
+                    }
+              }, 'json').fail(function () {
+                layer.close(load);
+                layer.alert('网络异常，重置初始化失败', { icon: 2 });
+              });
+            });
+       }
+
+  });
+});
+</script>
+{% endblock %}
+
+
+{% block provider_content %}
+{% if not pycharm %}
+<div class="text-danger text-bold text-lg">
+    没有找到Pycharm信息, 请先 <a href="{% url "python_main:dev_tools" %}">下载安装</a>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-1">
+                <div style="width: 54px; height: 54px">
+<img src="{% static 'python_main/pycharm.svg' %}" style="width: 50px; height: 50px">
+                </div>
+            </div>
+            <div class="col-md-9 text-bold text-primary"><h4>{{ pycharm.DisplayName }}</h4></div>
+            <div class="col-md-2">
+                <button class="btn btn-success float-right" lay-on="reDetect">重新探测</button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="text-muted">
+            <dl class="row">
+                <dt class="col-sm-2">安装模式</dt>
+                <dd class="col-sm-10">{{ pycharm.installType }}</dd>
+                <dt class="col-sm-2">版本</dt>
+                <dd class="col-sm-10">{{ pycharm.version }}</dd>
+                <dt class="col-sm-2">内部版本</dt>
+                <dd class="col-sm-10">{{ pycharm.DisplayVersion }}</dd>
+                <dt class="col-sm-2">安装目录</dt>
+                <dd class="col-sm-10">{{ pycharm.InstallLocation }}</dd>
+                <dt class="col-sm-2">数据目录名</dt>
+                <dd class="col-sm-10">{{ pycharm.dataDirectoryName }}</dd>
+            </dl>
+        </div>
+        <div class="text-right">
+
+            {% block pycharm_right_btn %}{% endblock %}
+        </div>
+    </div>
+    <div class="card-footer">
+        <div class="float-left">
+            <button class="btn btn-warning" lay-on="resetDefault">重置设置</button>
+        </div>
+        <div class="float-right">
+            <a href="{% url 'python_main:pycharm_uninstall' %}" class="btn btn-danger">卸载</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

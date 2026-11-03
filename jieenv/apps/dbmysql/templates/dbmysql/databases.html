@@ -1,0 +1,266 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2">
+            <i class="fa fa-user"></i> {{ conn_info.user }}@{{ conn_info.host }}:{{ conn_info.port }}
+            {% if server_version %}（{{ server_version }}）{% endif %}
+        </span>
+    </div>
+    <div class="card-tools">
+        <button type="button" id="btn-change-pwd" class="btn btn-outline-warning btn-sm"><i class="fa fa-key"></i> 修改密码</button>
+        <a href="javascript:;" id="btn-logout" class="btn btn-outline-danger btn-sm"><i class="fa fa-sign-out-alt"></i> 退出连接</a>
+    </div>
+</div>
+
+{% if db_error %}
+<div class="alert alert-danger">连接异常：{{ db_error }}</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header p-0 border-0">
+                <ul class="nav nav-tabs card-header-tabs" id="main-tabs" role="tablist">
+                    <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#tab-databases"><i class="fa fa-database"></i> 数据库</a></li>
+                    <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab-users"><i class="fa fa-users"></i> 用户管理</a></li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content">
+
+                    <!-- 数据库 tab -->
+                    <div class="tab-pane fade show active" id="tab-databases" role="tabpanel">
+                        <div class="mb-2">
+                            <a href="{% url 'dbmysql:db_create' conn_id %}" class="btn btn-success btn-sm"><i class="fa fa-plus"></i> 新建数据库</a>
+                        </div>
+                        <table class="table table-striped table-hover mb-0">
+                            <thead>
+                                <tr><th>数据库名</th><th>字符集</th><th>排序规则</th><th>表数量</th><th style="width:260px">操作</th></tr>
+                            </thead>
+                            <tbody>
+{% for db in databases %}
+                                <tr>
+                                    <td><a href="{% url 'dbmysql:tables' conn_id db.name %}"><b>{{ db.name }}</b></a></td>
+                                    <td>{{ db.charset }}</td>
+                                    <td>{{ db.collation }}</td>
+                                    <td>{{ db.table_count }}</td>
+                                    <td>
+{% if db.name in sys_db %} -
+{% else %}
+                                        <a href="{% url 'dbmysql:tables' conn_id db.name %}" class="btn btn-info btn-sm">表管理</a>
+                                        <a href="javascript:;" class="btn btn-outline-primary btn-sm btn-db-export" data-name="{{ db.name }}"><i class="fa fa-download"></i> 导出</a>
+                                        <a href="javascript:;" class="btn btn-outline-danger btn-sm btn-db-drop" data-name="{{ db.name }}">删除</a>
+{% endif %}
+                                    </td>
+                                </tr>
+{% empty %}
+                                <tr><td colspan="5" class="text-center text-muted py-4">无数据库</td></tr>
+{% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 用户 tab -->
+                    <div class="tab-pane fade" id="tab-users" role="tabpanel">
+                        <div class="mb-2">
+                            <button type="button" id="btn-create-user" class="btn btn-success btn-sm"><i class="fa fa-user-plus"></i> 新建用户</button>
+                            <span class="text-muted ml-2" style="font-size:12px">提示：需具备 CREATE USER 权限的账号才能新增/删除用户</span>
+                        </div>
+                        <table class="table table-striped table-hover mb-0" id="users-table">
+                            <thead>
+                                <tr><th>用户</th><th>主机</th><th>认证插件</th><th style="width:280px">操作</th></tr>
+                            </thead>
+                            <tbody id="users-tbody"><tr><td colspan="4" class="text-center text-muted py-4">加载中...</td></tr></tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_DB = '{% url 'dbmysql:api_db' conn_id %}';
+    var API_USERS = '{% url 'dbmysql:api_users_list' conn_id %}';
+    var API_USER = '{% url 'dbmysql:api_user_action' conn_id %}';
+    var API_GRANTS = '{% url 'dbmysql:api_user_grants' conn_id %}';
+    var API_EXPORT = '{% url 'dbmysql:api_db_export' conn_id %}';
+    var USER_GRANTS_URL_TPL = '/db/dbmysql/conn/{{ conn_id }}/user/__U__/host/__H__/grants/';
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    $('#btn-logout').on('click', function () {
+        $.post('{% url 'dbmysql:api_logout' %}', {conn_id: '{{ conn_id }}'}).done(function (res) {
+            window.location.href = res.redirect || '{% url 'dbmysql:index' %}';
+        });
+    });
+
+    // ── 修改密码 ──
+    $('#btn-change-pwd').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var html = '<div style="padding:20px 24px 0">'
+                + '<div class="form-group" style="margin-bottom:14px"><label style="display:block;margin-bottom:4px">新密码</label>'
+                + '<input type="password" id="pwd-new" class="form-control" autocomplete="new-password" placeholder="请输入新密码"></div>'
+                + '<div class="form-group" style="margin-bottom:0"><label style="display:block;margin-bottom:4px">确认密码</label>'
+                + '<input type="password" id="pwd-confirm" class="form-control" autocomplete="new-password" placeholder="请再次输入新密码"></div></div>';
+            layer.open({type: 1, title: '<i class="fa fa-key"></i> 修改密码', area: ['420px', 'auto'], content: html,
+                btn: ['确认修改', 'cancel'],
+                yes: function (idx) {
+                    var np = $('#pwd-new').val(); var cp = $('#pwd-confirm').val();
+                    if (!np) { layer.msg('新密码不能为空', {icon: 2}); return; }
+                    if (np !== cp) { layer.msg('两次输入的密码不一致', {icon: 2}); return; }
+                    var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                    $.post('{% url 'dbmysql:api_change_password' conn_id %}', {new_password: np, confirm_password: cp})
+                        .done(function (res) {
+                            layer.close(loadIdx);
+                            if (res.success) { layer.close(idx); layer.msg(res.message, {icon: 1, time: 2000}); }
+                            else { layer.msg(res.message, {icon: 2, time: 4000}); }
+                        }).fail(function () { layer.close(loadIdx); layer.msg('请求失败', {icon: 2, time: 4000}); });
+                }
+            });
+        });
+    });
+
+    // ── 数据库导出 ──
+    $('.btn-db-export').on('click', function () {
+        var db = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIdx = layer.msg('正在导出数据库 ' + db + '，请稍候...', {
+                icon: 16, shade: [0.3, '#000'], time: 0
+            });
+            setTimeout(function () { layer.close(loadIdx); }, 5000);
+            var form = $('<form method="POST" action="' + API_EXPORT + '" style="display:none">' +
+                '<input name="csrfmiddlewaretoken" value="' + $('[name=csrfmiddlewaretoken]').val() + '">' +
+                '<input name="db" value="' + db + '"></form>');
+            $('body').append(form);
+            form.submit();
+            form.remove();
+        });
+    });
+
+    // ── 删除数据库 ──
+    $('.btn-db-drop').on('click', function () {
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.prompt({title: '危险操作：请输入数据库名 "' + name + '" 确认删除', formType: 0},
+                function (value, index) {
+                if (value !== name) { layer.msg('输入不一致', {icon: 2}); return; }
+                layer.close(index);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post(API_DB, {action: 'drop', name: name}).done(function (res) {
+                    layer.close(loadIdx);
+                    msg(res.message, res.success);
+                    if (res.success) { setTimeout(function () { window.location.reload(); }, 800); }
+                });
+            });
+        });
+    });
+
+    // ── 用户管理 ──
+    var usersLoaded = false;
+    $('a[data-toggle="tab"][href="#tab-users"]').on('shown.bs.tab', function () {
+        if (!usersLoaded) { loadUsers(); usersLoaded = true; }
+    });
+
+    function loadUsers() {
+        var loadIdx = layui.layer.msg('正在加载用户列表...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.get(API_USERS).done(function (res) {
+            layui.layer.close(loadIdx);
+            var tbody = $('#users-tbody');
+            if (!res.success) { tbody.html('<tr><td colspan="4" class="text-center text-danger py-4">' + res.message + '</td></tr>'); return; }
+            tbody.empty();
+            for (var i = 0; i < res.users.length; i++) {
+                var u = res.users[i];
+                var grantsUrl = USER_GRANTS_URL_TPL.replace('__U__', encodeURIComponent(u.user)).replace('__H__', encodeURIComponent(u.host));
+                tbody.append('<tr><td><b>' + u.user + '</b></td><td>' + u.host + '</td><td>' + (u.plugin || '-') + '</td>' +
+                    '<td>' +
+                    '<a href="' + grantsUrl + '" class="btn btn-sm btn-outline-info">权限</a> ' +
+                    '<button class="btn btn-sm btn-outline-warning btn-user-pwd" data-user="' + u.user + '" data-host="' + u.host + '">改密码</button> ' +
+                    '<button class="btn btn-sm btn-outline-danger btn-user-drop" data-user="' + u.user + '" data-host="' + u.host + '">删除</button>' +
+                    '</td></tr>');
+            }
+            if (res.users.length === 0) { tbody.html('<tr><td colspan="4" class="text-center text-muted py-4">无用户</td></tr>'); }
+        }).fail(function () {
+            $('#users-tbody').html('<tr><td colspan="4" class="text-center text-danger py-4">加载失败</td></tr>');
+        });
+    }
+
+    $('#btn-create-user').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var html = '<div style="padding:20px 24px 0">' +
+                '<div class="form-group" style="margin-bottom:12px"><label>用户名</label><input id="nu-user" class="form-control" placeholder="例如: newuser"></div>' +
+                '<div class="form-group" style="margin-bottom:12px"><label>主机</label><input id="nu-host" class="form-control" placeholder="默认 %" value="%"></div>' +
+                '<div class="form-group" style="margin-bottom:0"><label>初始密码</label><input type="password" id="nu-pwd" class="form-control"></div></div>';
+            layer.open({type: 1, title: '<i class="fa fa-user-plus"></i> 新建用户', area: ['420px', 'auto'], content: html,
+                btn: ['创建', 'cancel'],
+                yes: function (idx) {
+                    var u = $('#nu-user').val().trim();
+                    var h = $('#nu-host').val().trim() || '%';
+                    var p = $('#nu-pwd').val();
+                    if (!u || !p) { layer.msg('请填写完整信息', {icon: 2}); return; }
+                    var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                    $.post(API_USER, {action: 'create', user: u, host: h, password: p}).done(function (res) {
+                        layer.close(loadIdx);
+                        msg(res.message, res.success);
+                        if (res.success) { layer.close(idx); loadUsers(); }
+                    });
+                }
+            });
+        });
+    });
+
+    $(document).on('click', '.btn-user-drop', function () {
+        var u = $(this).data('user'); var h = $(this).data('host');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定删除用户 "' + u + '@' + h + '" 吗？该用户的权限也将一并撤销！',
+                {icon: 3, title: '删除用户'}, function (idx) {
+                layer.close(idx);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post(API_USER, {action: 'drop', user: u, host: h}).done(function (res) {
+                    layer.close(loadIdx);
+                    msg(res.message, res.success);
+                    if (res.success) { loadUsers(); }
+                });
+            });
+        });
+    });
+
+    $(document).on('click', '.btn-user-pwd', function () {
+        var u = $(this).data('user'); var h = $(this).data('host');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var html = '<div style="padding:20px 24px 0"><div class="form-group" style="margin-bottom:0"><label>新密码</label>' +
+                '<input type="password" id="pwd-new2" class="form-control"></div></div>';
+            layer.open({type: 1, title: '修改密码 - ' + u + '@' + h, area: ['380px', 'auto'], content: html,
+                btn: ['确认', 'cancel'],
+                yes: function (idx) {
+                    var np = $('#pwd-new2').val();
+                    if (!np) { layer.msg('密码不能为空', {icon: 2}); return; }
+                    var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                    $.post(API_USER, {action: 'password', user: u, host: h, new_password: np}).done(function (res) {
+                        layer.close(loadIdx);
+                        msg(res.message, res.success);
+                        if (res.success) { layer.close(idx); }
+                    });
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

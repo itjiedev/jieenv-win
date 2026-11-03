@@ -1,0 +1,494 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-outline card-info mb-2">
+    <div class="card-header p-2">
+        <h3 class="card-title">
+            <i class="fa fa-info-circle"></i> 归属 Python 信息
+        </h3>
+        <div class="card-tools">
+            <a href="{% url 'python_archive:index' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="fa fa-arrow-left"></i> 返回列表
+            </a>
+            <button class="btn btn-outline-info btn-sm" id="btn-refresh-all">
+                <i class="fa fa-sync-alt"></i> 刷新验证
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4"><b>名称：</b><code>{{ record.name }}</code></div>
+            <div class="col-md-2"><b>版本：</b>{{ record.version }}</div>
+            <div class="col-md-3"><b>架构：</b>{{ record.arch|default:"-" }}
+                {% if record.free_threaded %}<span class="badge badge-success ml-1">Free-Threaded</span>{% endif %}
+                {% if record.with_tests %}<span class="badge badge-info ml-1">With-Tests</span>{% endif %}
+            </div>
+        </div>
+        <div class="row mt-1">
+            <div class="col-md-12"><b>解释器：</b><code>{{ record.python_exe }}</code></div>
+        </div>
+        <div class="row mt-1">
+            <div class="col-md-12"><b>安装目录：</b><code>{{ record.install_dir }}</code></div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-outline card-success">
+    <div class="card-header p-2">
+        <h3 class="card-title">
+            <i class="fa fa-cubes"></i> 虚拟环境列表
+            <small class="text-muted ml-2">共 <span id="venv-count">{{ venvs|length }}</span> 个</small>
+        </h3>
+        <div class="card-tools">
+            <button class="btn btn-success btn-sm" id="btn-create">
+                <i class="fa fa-plus"></i> 新建虚拟环境
+            </button>
+            <button class="btn btn-primary btn-sm" id="btn-import">
+                <i class="fa fa-folder-open"></i> 导入已有 venv
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if venvs %}
+        <table class="table table-striped table-hover mb-0" id="venv-table">
+            <thead>
+                <tr>
+                    <th style="width:180px">名称</th>
+                    <th>路径</th>
+                    <th style="width:80px">包数</th>
+                    <th style="width:100px">状态</th>
+                    <th style="width:200px" class="text-right">操作</th>
+                </tr>
+            </thead>
+            <tbody id="venv-tbody">
+                {% for v in venvs %}
+                <tr data-venv-id="{{ v.id }}" data-last-verified="{{ v.last_verified_at }}">
+                    <td>{% if v.locked %}<i class="fa fa-lock text-warning mr-1" title="已锁定（禁止删除）"></i>{% endif %}<b>{{ v.name }}</b></td>
+                    <td><code style="font-size:12px">{{ v.venv_path }}</code></td>
+                    <td class="pip-count" data-value="{{ v.pip_count }}">
+                        {% if v.pip_count %}{{ v.pip_count }}{% else %}<span class="text-muted">-</span>{% endif %}
+                    </td>
+                    <td class="status-cell">
+                        {% if v.status == 'ready' %}
+                            <span class="badge badge-success" title="虚拟环境正常">&#10003; 就绪</span>
+                        {% elif v.status == 'damaged' %}
+                            <span class="badge badge-warning" title="{{ v.status_reason }}">&#9888; 损坏</span>
+                        {% elif v.status == 'owner_lost' %}
+                            <span class="badge badge-danger" title="{{ v.status_reason }}">&#10007; 归属丢失</span>
+                        {% elif v.status == 'missing' %}
+                            <span class="badge badge-danger" title="目录已不存在">&#10007; 已删除</span>
+                        {% else %}
+                            <span class="badge badge-secondary">未知</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        <div class="dropdown d-inline-block">
+                            <button class="btn btn-sm btn-light dropdown-toggle" data-toggle="dropdown">
+                                操作 <span class="caret"></span>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-right">
+                                <a class="dropdown-item" href="{% url 'python_archive:pip_list_venv' v.id %}">
+                                    <i class="fa fa-puzzle-piece"></i> 包管理
+                                </a>
+                                <button class="dropdown-item venv-terminal" data-id="{{ v.id }}" data-path="{{ v.venv_path }}">
+                                    <i class="fa fa-terminal"></i> 打开终端
+                                </button>
+                                <button class="dropdown-item venv-rename" data-id="{{ v.id }}" data-name="{{ v.name }}">
+                                    <i class="fa fa-edit"></i> 重命名
+                                </button>
+                                <button class="dropdown-item venv-toggle-lock"
+                                        data-id="{{ v.id }}"
+                                        data-locked="{{ v.locked|yesno:'true,false' }}">
+                                    <i class="fa {{ v.locked|yesno:'fa-lock,fa-unlock' }}"></i>
+                                    {{ v.locked|yesno:'解锁记录,锁定记录' }}
+                                </button>
+                                <div class="dropdown-divider"></div>
+                                <button class="dropdown-item text-danger venv-delete {{ v.locked|yesno:'disabled,' }}"
+                                        data-id="{{ v.id }}" data-name="{{ v.name }}"
+                                        data-locked="{{ v.locked|yesno:'true,false' }}"
+                                        data-path="{{ v.venv_path }}"
+                                        {{ v.locked|yesno:'disabled,' }}>
+                                    <i class="fa fa-trash"></i> 彻底删除（目录+记录）
+                                </button>
+                                <button class="dropdown-item text-warning venv-remove-record {{ v.locked|yesno:'disabled,' }}"
+                                        data-id="{{ v.id }}" data-name="{{ v.name }}"
+                                        data-locked="{{ v.locked|yesno:'true,false' }}"
+                                        {{ v.locked|yesno:'disabled,' }}>
+                                    <i class="fa fa-eraser"></i> 仅删除记录（保留目录）
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fa fa-cubes fa-2x mb-2"></i>
+            <div>该 Python 下暂无虚拟环境</div>
+            <div class="mt-2">
+                <button class="btn btn-success btn-sm" id="btn-create-empty">
+                    <i class="fa fa-plus"></i> 去创建一个
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var CSRF = $('input[name=csrfmiddlewaretoken]').val();
+    var RECORD_ID = '{{ record.id }}';
+    var DEFAULT_VENV_ROOT = '{{ default_venv_root }}';
+    var refreshAllUrl = '{% url "python_archive:api_venv_list" record.id %}';
+
+    function msg(text, ok, time) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: time || 1000});
+        });
+    }
+
+    function loadList() {
+        $.get(refreshAllUrl).done(function (res) {
+            if (!res || !res.success) return;
+            var list = res.venvs || [];
+            $('#venv-count').text(list.length);
+            if (!list.length) {
+                $('#venv-tbody').html('');
+                $('.card-success .card-body.p-0').html(
+                    '<div class="text-center text-muted py-5">' +
+                    '<i class="fa fa-cubes fa-2x mb-2"></i>' +
+                    '<div>该 Python 下暂无虚拟环境</div>' +
+                    '<div class="mt-2">' +
+                    '<button class="btn btn-success btn-sm" id="btn-create-empty">' +
+                    '<i class="fa fa-plus"></i> 去创建一个</button></div></div>');
+                return;
+            }
+            var rows = list.map(function (v) {
+                var statusHtml = '';
+                if (v.status === 'ready') statusHtml = '<span class="badge badge-success" title="虚拟环境正常">✓ 就绪</span>';
+                else if (v.status === 'damaged') statusHtml = '<span class="badge badge-warning" title="' + (v.status_reason || '') + '">⚠ 损坏</span>';
+                else if (v.status === 'owner_lost') statusHtml = '<span class="badge badge-danger" title="' + (v.status_reason || '') + '">✗ 归属丢失</span>';
+                else if (v.status === 'missing') statusHtml = '<span class="badge badge-danger" title="目录已不存在">✗ 已删除</span>';
+                else statusHtml = '<span class="badge badge-secondary">未知</span>';
+
+                var pipCountHtml = v.pip_count ? v.pip_count : '<span class="text-muted">-</span>';
+                var pipUrl = '{% url 'python_archive:pip_list_venv' 'PLACEHOLDER' %}'.replace('PLACEHOLDER', v.id);
+                var locked = v.locked === true || v.locked === 'true';
+                var lockIcon = locked ? 'fa-lock' : 'fa-unlock';
+                var lockLabel = locked ? '解锁记录' : '锁定记录';
+
+                return '<tr data-venv-id="' + v.id + '">' +
+                    '<td>' + (locked ? '<i class="fa fa-lock text-warning mr-1"></i>' : '') + '<b>' + v.name + '</b></td>' +
+                    '<td><code style="font-size:12px">' + v.venv_path + '</code></td>' +
+                    '<td class="pip-count">' + pipCountHtml + '</td>' +
+                    '<td class="status-cell">' + statusHtml + '</td>' +
+                    '<td class="text-right">' +
+                        '<div class="dropdown d-inline-block">' +
+                            '<button class="btn btn-sm btn-light dropdown-toggle" data-toggle="dropdown">操作 <span class="caret"></span></button>' +
+                            '<div class="dropdown-menu dropdown-menu-right">' +
+                                '<a class="dropdown-item" href="' + pipUrl + '"><i class="fa fa-puzzle-piece"></i> 包管理</a>' +
+                                '<button class="dropdown-item venv-terminal" data-id="' + v.id + '" data-path="' + v.venv_path + '"><i class="fa fa-terminal"></i> 打开终端</button>' +
+                                '<button class="dropdown-item venv-rename" data-id="' + v.id + '" data-name="' + v.name + '"><i class="fa fa-edit"></i> 重命名</button>' +
+                                '<button class="dropdown-item venv-toggle-lock" data-id="' + v.id + '" data-locked="' + locked + '"><i class="fa ' + lockIcon + '"></i> ' + lockLabel + '</button>' +
+                                '<div class="dropdown-divider"></div>' +
+                                '<button class="dropdown-item text-danger venv-delete' + (locked ? ' disabled' : '') + '" data-id="' + v.id + '" data-name="' + v.name + '" data-locked="' + locked + '" data-path="' + v.venv_path + '"' + (locked ? ' disabled' : '') + '><i class="fa fa-trash"></i> 彻底删除</button>' +
+                                '<button class="dropdown-item text-warning venv-remove-record' + (locked ? ' disabled' : '') + '" data-id="' + v.id + '" data-name="' + v.name + '" data-locked="' + locked + '"' + (locked ? ' disabled' : '') + '><i class="fa fa-eraser"></i> 仅删除记录</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</td>' +
+                '</tr>';
+            }).join('');
+            $('#venv-tbody').html(rows);
+        });
+    }
+
+    // ── 创建虚拟环境 ─────────────────────────
+    function buildDefaultVenvPath(name) {
+        if (!name) return DEFAULT_VENV_ROOT;
+        var sep = DEFAULT_VENV_ROOT.indexOf('\\') >= 0 ? '\\' : '/';
+        return DEFAULT_VENV_ROOT.replace(/[\\\/]+$/, '') + sep + name;
+    }
+
+    function openCreateDialog() {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var html =
+                '<div style="padding:15px 18px 5px">' +
+                '  <div class="form-group">' +
+                '    <label>虚拟环境名称</label>' +
+                '    <input id="cv-name" type="text" class="form-control" value="venv" maxlength="50" placeholder="例如: myenv">' +
+                '  </div>' +
+                '  <div class="form-group">' +
+                '    <label>保存路径</label>' +
+                '    <div class="input-group">' +
+                '      <input id="cv-path" type="text" class="form-control" readonly>' +
+                '      <div class="input-group-append">' +
+                '        <button type="button" class="btn btn-outline-secondary" id="cv-browse">' +
+                '          <i class="fa fa-folder-open"></i> 浏览...</button>' +
+                '      </div>' +
+                '    </div>' +
+                '    <small class="text-muted">默认保存到 ' + DEFAULT_VENV_ROOT + '</small>' +
+                '  </div>' +
+                '  <div class="form-group">' +
+                '    <div class="checkbox">' +
+                '      <label><input type="checkbox" id="cv-system-site"> 继承系统 site-packages</label>' +
+                '    </div>' +
+                '  </div>' +
+                '</div>';
+
+            var dialogIdx = layer.open({
+                type: 1,
+                title: '创建虚拟环境',
+                area: ['560px', '320px'],
+                content: html,
+                btn: ['确定创建', '取消'],
+                success: function (layero) {
+                    var $name = layero.find('#cv-name');
+                    var $path = layero.find('#cv-path');
+
+                    function syncPath() {
+                        $path.val(buildDefaultVenvPath($name.val().trim()));
+                    }
+                    syncPath();
+                    $name.on('input', syncPath);
+
+                    layero.find('#cv-browse').on('click', function () {
+                        JieDirPicker.open({
+                            title: '选择虚拟环境保存位置',
+                            mode: 'directory',
+                            onSelect: function (p) {
+                                var n = $name.val().trim() || 'venv';
+                                var sep = p.indexOf('\\') >= 0 ? '\\' : '/';
+                                $path.val(p.replace(/[\\\/]+$/, '') + sep + n);
+                            }
+                        });
+                    });
+                },
+                yes: function (idx, layero) {
+                    var name = layero.find('#cv-name').val().trim();
+                    var path = layero.find('#cv-path').val().trim();
+                    var includeSystem = layero.find('#cv-system-site').prop('checked');
+                    if (!name) { msg('请填写虚拟环境名称', false); return; }
+                    if (!/^[\w\-]+$/.test(name)) {
+                        msg('名称只能包含字母、数字、下划线、短横线（不能有中文或空格）', false, 4000);
+                        return;
+                    }
+                    if (!path) { msg('请选择保存路径', false); return; }
+                    layer.close(idx);
+
+                    $.post('{% url 'python_archive:api_venv_create' %}', {
+                        record_id: RECORD_ID, venv_path: path, name: name,
+                        include_system_site: includeSystem ? '1' : '0',
+                        csrfmiddlewaretoken: CSRF
+                    }).done(function (res) {
+                        if (!res || !res.success || !res.task_id) {
+                            msg((res && res.message) || '创建任务启动失败', false, 3500);
+                            return;
+                        }
+                        JieTaskLog.open({
+                            title: '创建虚拟环境 ' + name,
+                            taskId: res.task_id,
+                            width: '640px',
+                            height: '480px',
+                            logHeight: 320,
+                            onSuccess: function () {
+                                msg('虚拟环境创建成功', true);
+                                setTimeout(function () { location.reload(); }, 300);
+                            },
+                            onFail: function (result) {
+                                msg((result && result.message) || '创建失败', false, 4000);
+                            }
+                        });
+                    }).fail(function () {
+                        msg('请求失败', false);
+                    });
+                }
+            });
+        });
+    }
+
+    $('#btn-create, #btn-create-empty').on('click', openCreateDialog);
+
+    // ── 导入已有 venv ─────────────────────────
+    $('#btn-import').on('click', function () {
+        JieDirPicker.open({
+            title: '选择虚拟环境目录（含 pyvenv.cfg）',
+            mode: 'directory',
+            onSelect: function (p) {
+                var loadIdx = layui.layer.msg('正在验证并导入，请稍候...', {
+                    icon: 16, shade: [0.3, '#000'], shadeClose: false, time: 0, scrollbar: false
+                });
+                $.post('{% url "python_archive:api_venv_import" %}', {
+                    venv_path: p, csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    layui.layer.close(loadIdx);
+                    if (res && res.success) {
+                        msg(res.message || '导入成功', true);
+                        location.reload();
+                    } else {
+                        msg((res && res.message) || '导入失败', false, 4500);
+                    }
+                }).fail(function () {
+                    layui.layer.close(loadIdx);
+                    msg('请求失败', false);
+                });
+            }
+        });
+    });
+
+    // ── 打开终端 ──────────────────────────────
+    $(document).on('click', '.venv-terminal', function () {
+        var id = $(this).data('id');
+        $.post('{% url 'python_archive:api_venv_open_terminal' %}', {
+            venv_id: id, csrfmiddlewaretoken: CSRF
+        }).done(function (res) {
+            if (res && res.success) { msg('终端已打开', true); }
+            else { msg((res && res.message) || '打开失败', false); }
+        });
+    });
+
+    // ── 锁切换 ────────────────────────────────
+    $(document).on('click', '.venv-toggle-lock', function () {
+        var id = $(this).data('id');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        layui.use('layer', function () {
+            var actionText = wasLocked ? '解锁' : '锁定';
+            var warnText = wasLocked
+                ? '解锁后将允许删除该虚拟环境，确定要解锁吗？'
+                : '锁定后将禁止删除该虚拟环境，确定要锁定吗？';
+            layer.confirm(warnText, {icon: 3, title: '确认' + actionText}, function (idx) {
+                layer.close(idx);
+                $.post('{% url 'python_archive:api_toggle_lock' %}', {
+                    type: 'venv', id: id, csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (res && res.success) { msg(res.message, true); loadList(); }
+                    else { msg((res && res.message) || '操作失败', false); }
+                });
+            });
+        });
+    });
+
+    // ── 重命名 ────────────────────────────────
+    $(document).on('click', '.venv-rename', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            layer.prompt({formType: 0, title: '重命名虚拟环境', value: name, maxlength: 50}, function (newName, idx) {
+                newName = (newName || '').trim();
+                if (!newName) { msg('名称不能为空', false); return; }
+                if (newName === name) { layer.close(idx); return; }
+                layer.close(idx);
+                $.post('{% url 'python_archive:api_venv_rename' %}', {
+                    venv_id: id, new_name: newName, csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (res && res.success) { msg('重命名成功', true); loadList(); }
+                    else { msg((res && res.message) || '重命名失败', false); }
+                });
+            });
+        });
+    });
+
+    // ── 删除 ──────────────────────────────────
+    $(document).on('click', '.venv-delete', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        layui.use('layer', function () {
+            if (wasLocked) {
+                layer.alert('该虚拟环境已锁定，请先解锁后再删除',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            layer.confirm('确定彻底删除虚拟环境「' + name + '」吗？\n将同时删除目录和记录，此操作不可恢复！',
+                {icon: 2, title: '彻底删除虚拟环境'}, function (idx) {
+                layer.close(idx);
+                $.post('{% url 'python_archive:api_venv_delete' %}', {
+                    venv_id: id, delete_dir: '1', csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (res && res.success) { msg('删除成功', true); loadList(); }
+                    else { msg((res && res.message) || '删除失败', false); }
+                });
+            });
+        });
+    });
+
+    $(document).on('click', '.venv-remove-record', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        layui.use('layer', function () {
+            if (wasLocked) {
+                layer.alert('该虚拟环境已锁定，请先解锁后再删除记录',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            layer.confirm('仅从列表移除「' + name + '」的记录？\n虚拟环境目录将保留在磁盘上。',
+                {icon: 3, title: '删除记录（保留目录）'}, function (idx) {
+                layer.close(idx);
+                $.post('{% url 'python_archive:api_venv_delete' %}', {
+                    venv_id: id, delete_dir: '0', csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (res && res.success) { msg('已移除记录', true); loadList(); }
+                    else { msg((res && res.message) || '操作失败', false); }
+                });
+            });
+        });
+    });
+
+    function runVerify(options) {
+        options = options || {};
+        var silent = !!options.silent;
+        var $btn = $('#btn-refresh-all');
+        if (!silent) {
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> 验证中...');
+        }
+        var rows = document.querySelectorAll('[data-venv-id]');
+        var idx = 0, done = 0;
+        var total = rows.length;
+
+        function next() {
+            if (idx >= total) {
+                if (!silent) {
+                    $btn.prop('disabled', false).html('<i class="fa fa-sync-alt"></i> 刷新验证');
+                    msg('验证完成（' + done + '/' + total + '）', true);
+                }
+                return;
+            }
+            var row = rows[idx++];
+            var vid = row.dataset.venvId;
+            $.get('{% url 'python_archive:api_venv_verify' 'PLACEHOLDER' %}'.replace('PLACEHOLDER', vid))
+                .done(function (res) {
+                    if (res && res.success) {
+                        var sc = row.querySelector('.status-cell');
+                        var pc = row.querySelector('.pip-count');
+                        if (res.status === 'ready') sc.innerHTML = '<span class="badge badge-success">✓ 就绪</span>';
+                        else if (res.status === 'damaged') sc.innerHTML = '<span class="badge badge-warning" title="' + (res.reason || '') + '">⚠ 损坏</span>';
+                        else if (res.status === 'owner_lost') sc.innerHTML = '<span class="badge badge-danger">✗ 归属丢失</span>';
+                        else sc.innerHTML = '<span class="badge badge-danger">✗ 已删除</span>';
+                        if (pc) pc.innerHTML = res.pip_count ? res.pip_count : '<span class="text-muted">-</span>';
+                        done++;
+                    }
+                }).always(next);
+        }
+        next();
+    }
+
+    $('#btn-refresh-all').on('click', function () {
+        runVerify({silent: false});
+    });
+
+    setTimeout(function () {
+        if (document.querySelectorAll('[data-venv-id]').length) {
+            runVerify({silent: true});
+        }
+    }, 300);
+});
+</script>
+{% endblock %}

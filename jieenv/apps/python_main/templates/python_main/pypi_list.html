@@ -1,0 +1,254 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+{# ── 当前生效源 ─────────────────────────────── #}
+<div class="card card-outline card-info mb-2">
+    <div class="card-header p-2">
+        <h3 class="card-title"><i class="fas fa-bullseye"></i> 当前生效源</h3>
+        <div class="card-tools">
+            <button class="btn btn-outline-primary btn-sm" id="btn-refresh">
+                <i class="fa fa-refresh"></i> 刷新</button>
+            <button class="btn btn-outline-warning btn-sm" id="btn-reset">
+                <i class="fas fa-undo"></i> 恢复官方默认</button>
+        </div>
+    </div>
+    <div class="card-body py-2">
+        <span class="badge badge-info py-2" id="current-name">{{ current_source.name }}</span>
+        <code class="ml-2" id="current-url">{{ current_source.url }}</code>
+    </div>
+</div>
+
+{# ── PyPI 源列表（内置 + 自定义）──────────────── #}
+<div class="card card-outline card-info">
+    <div class="card-header p-2">
+        <h3 class="card-title"><i class="fas fa-server"></i> PyPI 源列表</h3>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th style="width:160px">名称</th>
+                    <th>源地址</th>
+                    <th style="width:170px">操作</th>
+                </tr>
+            </thead>
+            <tbody id="source-tbody">
+                {% for s in sources %}
+                <tr data-url="{{ s.url }}">
+                    <td>
+                        <b>{{ s.name }}</b>
+                        {% if not s.builtin %}<span class="badge badge-secondary ml-1">自定义</span>{% endif %}
+                    </td>
+                    <td><code>{{ s.url }}</code></td>
+                    <td>
+                        <button class="btn btn-outline-success btn-sm btn-use-source"
+                                data-url="{{ s.url }}">应用
+                        </button>
+                        {% if not s.builtin %}
+                        <button class="btn btn-outline-danger btn-sm btn-remove-source"
+                                data-id="{{ s.id }}" data-name="{{ s.name }}" title="删除此自定义源">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── 添加自定义源 ───────────────────────────── #}
+<div class="card card-outline card-secondary mt-2">
+    <div class="card-header p-2">
+        <h3 class="card-title"><i class="fas fa-edit"></i> 添加自定义源</h3>
+    </div>
+    <div class="card-body">
+        <div class="form-row">
+            <div class="col-md-3 mb-2">
+                <input type="text" class="form-control" id="custom-name"
+                       placeholder="名称（可选，如 公司内网）">
+            </div>
+            <div class="col-md-6 mb-2">
+                <input type="text" class="form-control" id="custom-url"
+                       placeholder="源地址，如 https://pypi.example.com/simple">
+            </div>
+            <div class="col-md-3 mb-2">
+                <button class="btn btn-primary btn-block" id="btn-add-custom">
+                    <i class="fas fa-plus"></i> 添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    function csrf() { return $('input[name=csrfmiddlewaretoken]').val(); }
+
+    function msg(text, ok, time) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: time || 2500});
+        });
+    }
+
+    // 渲染当前生效源，并高亮列表中匹配的行
+    function renderCurrent(cur) {
+        if (!cur) return;
+        $('#current-name').text(cur.name || '自定义源');
+        $('#current-url').text(cur.url || '');
+        var curUrl = (cur.url || '').replace(/\/+$/, '');
+        $('#source-tbody tr[data-url]').each(function () {
+            var $tr = $(this);
+            var rowUrl = String($tr.data('url') || '').replace(/\/+$/, '');
+            var $btn = $tr.find('.btn-use-source');
+            if (rowUrl && rowUrl === curUrl) {
+                $tr.addClass('table-success');
+                $btn.removeClass('btn-outline-success').addClass('btn-success')
+                    .html('<i class="fas fa-check-circle"></i> 生效中').prop('disabled', true);
+            } else {
+                $tr.removeClass('table-success');
+                $btn.removeClass('btn-success').addClass('btn-outline-success')
+                    .html('应用').prop('disabled', false);
+            }
+        });
+    }
+
+    // 设置全局源
+    function applySource(url) {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+            $.post('{% url "python_main:api_pypi_set" %}', {
+                url: url,
+                csrfmiddlewaretoken: csrf()
+            }).done(function (res) {
+                layer.close(loadIdx);
+                if (res && res.success) {
+                    msg(res.message || '设置成功', true, 1800);
+                    renderCurrent(res.current);
+                } else {
+                    msg((res && res.message) || '设置失败', false, 3500);
+                }
+            }).fail(function () {
+                layer.close(loadIdx);
+                msg('请求失败，请检查网络', false, 3000);
+            });
+        });
+    }
+
+    // 初始高亮
+    renderCurrent({
+        name: '{{ current_source.name|escapejs }}',
+        url: '{{ current_source.url|escapejs }}'
+    });
+
+    // 使用某个源（内置或自定义）
+    $(document).on('click', '.btn-use-source', function () {
+        applySource($(this).data('url'));
+    });
+
+    // 添加自定义源
+    $('#btn-add-custom').on('click', function () {
+        var url = $('#custom-url').val().trim();
+        var name = $('#custom-name').val().trim();
+        if (!url) { msg('请输入源地址', false); return; }
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+            $.post('{% url "python_main:api_pypi_add_custom" %}', {
+                name: name,
+                url: url,
+                csrfmiddlewaretoken: csrf()
+            }).done(function (res) {
+                layer.close(loadIdx);
+                if (res && res.success) {
+                    msg(res.message || '添加成功', true, 1500);
+                    setTimeout(function () { location.reload(); }, 800);
+                } else {
+                    msg((res && res.message) || '添加失败', false, 3500);
+                }
+            }).fail(function () {
+                layer.close(loadIdx);
+                msg('请求失败，请检查网络', false, 3000);
+            });
+        });
+    });
+    $('#custom-url').on('keydown', function (e) {
+        if (e.key === 'Enter') { $('#btn-add-custom').click(); }
+    });
+
+    // 删除自定义源
+    $(document).on('click', '.btn-remove-source', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定删除自定义源「' + name + '」吗？',
+                {icon: 3, title: '确认删除'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+                $.post('{% url "python_main:api_pypi_remove_custom" %}', {
+                    id: id,
+                    csrfmiddlewaretoken: csrf()
+                }).done(function (res) {
+                    layer.close(loadIdx);
+                    if (res && res.success) {
+                        msg(res.message || '已删除', true, 1500);
+                        setTimeout(function () { location.reload(); }, 800);
+                    } else {
+                        msg((res && res.message) || '删除失败', false, 3500);
+                    }
+                }).fail(function () {
+                    layer.close(loadIdx);
+                    msg('请求失败，请检查网络', false, 3000);
+                });
+            });
+        });
+    });
+
+    // 恢复官方默认
+    $('#btn-reset').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定恢复官方默认源吗？将清除自定义的源配置。',
+                {icon: 3, title: '确认恢复'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+                $.post('{% url "python_main:api_pypi_reset" %}', {
+                    csrfmiddlewaretoken: csrf()
+                }).done(function (res) {
+                    layer.close(loadIdx);
+                    if (res && res.success) {
+                        msg(res.message || '已恢复', true, 1800);
+                        renderCurrent(res.current);
+                    } else {
+                        msg((res && res.message) || '恢复失败', false, 3500);
+                    }
+                }).fail(function () {
+                    layer.close(loadIdx);
+                    msg('请求失败，请检查网络', false, 3000);
+                });
+            });
+        });
+    });
+
+    // 刷新当前生效源
+    $('#btn-refresh').on('click', function () {
+        $.get('{% url "python_main:api_pypi_get" %}').done(function (res) {
+            if (res && res.success) {
+                renderCurrent(res.current);
+                msg('已刷新', true, 1200);
+            } else {
+                msg((res && res.message) || '刷新失败', false);
+            }
+        }).fail(function () {
+            msg('刷新请求失败', false);
+        });
+    });
+});
+</script>
+{% endblock %}

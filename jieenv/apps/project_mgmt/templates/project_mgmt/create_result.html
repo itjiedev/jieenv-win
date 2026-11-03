@@ -1,0 +1,247 @@
+{% extends "layout_main.html" %}
+
+{% block css_code %}
+<style>
+.result-hero { border-radius: .5rem; padding: 1.5rem 1.75rem; margin-bottom: 1rem; border: 1px solid transparent; display: flex; gap: 1rem; align-items: flex-start; }
+.result-hero .hero-icon { font-size: 2.5rem; line-height: 1; flex-shrink: 0; margin-top: .15rem; }
+.result-hero .hero-body { flex: 1; min-width: 0; }
+.result-hero .hero-title { font-size: 1.3rem; font-weight: 700; margin-bottom: .25rem; }
+.result-hero .hero-meta { font-size: .85rem; opacity: .85; line-height: 1.6; }
+.result-hero.success { background: #ecfdf5; border-color: #a7f3d0; }
+.result-hero.success .hero-title { color: #065f46; }
+.result-hero.warning { background: #fffbeb; border-color: #fde68a; }
+.result-hero.warning .hero-title { color: #92400e; }
+.result-hero.failure { background: #fef2f2; border-color: #fecaca; }
+.result-hero.failure .hero-title { color: #991b1b; }
+.result-hero.running { background: #eff6ff; border-color: #bfdbfe; }
+.result-hero.running .hero-title { color: #1e40af; }
+
+.section-card { border-radius: .5rem; border: 1px solid #e5e7eb; margin-bottom: 1rem; background: #fff; }
+.section-card .section-header { padding: .75rem 1rem; border-bottom: 1px solid #f3f4f6; font-weight: 600; font-size: .9rem; color: #374151; display: flex; align-items: center; gap: .5rem; }
+.section-card .section-header .count-badge { font-size: .7rem; font-weight: 500; background: #f3f4f6; color: #6b7280; padding: 1px .45rem; border-radius: .75rem; margin-left: auto; }
+.section-card .section-body { padding: .5rem 1rem; }
+
+.item-row { display: flex; gap: .5rem; align-items: center; padding: .45rem 0; font-size: .85rem; border-bottom: 1px dashed #f3f4f6; }
+.item-row:last-child { border-bottom: none; }
+.item-row .item-icon { font-size: 1rem; width: 1.2rem; text-align: center; flex-shrink: 0; }
+.item-row .item-icon.ok { color: #10b981; }
+.item-row .item-icon.fail { color: #ef4444; }
+.item-row .item-label { flex: 1; min-width: 0; color: #1f2937; font-weight: 500; }
+.item-row .item-sub { font-size: .75rem; color: #6b7280; margin-left: .25rem; }
+
+.pkg-row { display: flex; gap: .5rem; align-items: center; padding: .35rem 0; font-size: .8rem; border-bottom: 1px dashed #f9fafb; padding-left: 1.5rem; }
+.pkg-row:last-child { border-bottom: none; }
+.pkg-row .pkg-badge { font-size: .7rem; font-weight: 600; padding: 1px .5rem; border-radius: .25rem; flex-shrink: 0; width: 3.2rem; text-align: center; }
+.pkg-row .pkg-badge.ok { background: #d1fae5; color: #065f46; }
+.pkg-row .pkg-badge.fail { background: #fee2e2; color: #991b1b; }
+.pkg-row .pkg-badge.fallback { background: #fef3c7; color: #92400e; }
+.pkg-row .pkg-name { color: #1f2937; font-family: monospace; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 10rem; }
+.pkg-row .pkg-note { color: #6b7280; font-size: .72rem; }
+
+.error-list .err-item { padding: .4rem .65rem; background: #fef2f2; border-left: 3px solid #ef4444; border-radius: .25rem; margin-bottom: .35rem; font-size: .8rem; color: #991b1b; }
+
+.action-row { padding: .5rem 0; border-bottom: 1px solid #f3f4f6; }
+.action-row:last-child { border-bottom: none; }
+.action-row .action-title { font-size: .85rem; font-weight: 600; color: #374151; margin-bottom: .25rem; display: flex; align-items: center; gap: .4rem; }
+
+.action-bar { padding: .75rem 0; display: flex; gap: .5rem; flex-wrap: wrap; }
+.action-bar .btn { font-size: .85rem; }
+
+.empty-hint { padding: 1rem; text-align: center; color: #9ca3af; font-size: .8rem; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+{% if not task_found %}
+<div class="result-hero failure">
+    <div class="hero-icon"><i class="fa-regular fa-clock"></i></div>
+    <div class="hero-body">
+        <div class="hero-title">任务已过期</div>
+        <div class="hero-meta">任务 {{ task_id }} 已被系统清理，无法查看详细结果。</div>
+    </div>
+</div>
+<div class="action-bar">
+    <a href="{% url 'project_mgmt:index' %}" class="btn btn-secondary"><i class="fa-solid fa-list"></i> 返回项目列表</a>
+</div>
+
+{% elif is_running %}
+<div class="result-hero running">
+    <div class="hero-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+    <div class="hero-body">
+        <div class="hero-title">项目创建中...</div>
+        <div class="hero-meta">正在执行，请稍候。此页面会自动刷新，完成后将显示结果摘要。</div>
+    </div>
+</div>
+<div style="text-align:center;color:#9ca3af;font-size:.75rem;margin-top:.5rem;">（2 秒后自动刷新...）</div>
+<script>setTimeout(function(){location.reload();},2000);</script>
+
+{% else %}
+
+{% if success %}
+{% if has_warnings %}
+<div class="result-hero warning">
+    <div class="hero-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <div class="hero-body">
+        <div class="hero-title">项目创建成功 —— 有警告</div>
+        <div class="hero-meta">项目：<strong>{{ project_name }}</strong> &nbsp;|&nbsp; id={{ project_id }}<br>路径：<code>{{ project_dir }}</code></div>
+    </div>
+</div>
+{% else %}
+<div class="result-hero success">
+    <div class="hero-icon"><i class="fa-solid fa-circle-check"></i></div>
+    <div class="hero-body">
+        <div class="hero-title">项目创建成功</div>
+        <div class="hero-meta">项目：<strong>{{ project_name }}</strong> &nbsp;|&nbsp; id={{ project_id }}<br>路径：<code>{{ project_dir }}</code></div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+{% if errors %}
+<div class="result-hero failure">
+    <div class="hero-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+    <div class="hero-body">
+        <div class="hero-title">项目创建失败</div>
+        <div class="hero-meta">项目：<strong>{{ project_name }}</strong>{% if project_dir %}<br>路径：<code>{{ project_dir }}</code>{% endif %}</div>
+    </div>
+</div>
+{% else %}
+<div class="result-hero failure">
+    <div class="hero-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+    <div class="hero-body">
+        <div class="hero-title">项目创建失败</div>
+        <div class="hero-meta">项目：<strong>{{ project_name }}</strong></div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+{% if created_items %}
+<div class="section-card">
+    <div class="section-header">
+        组件 Provider
+        <span class="count-badge">{{ created_items|length }}</span>
+    </div>
+    <div class="section-body">
+        {% for item in created_items %}
+        <div class="item-row">
+            {% if item.provider_result and item.provider_result.success %}
+            <span class="item-icon ok"><i class="fa-solid fa-check"></i></span>
+            {% else %}
+            <span class="item-icon fail"><i class="fa-solid fa-xmark"></i></span>
+            {% endif %}
+            <span class="item-label">{{ item.label }}</span>
+            {% if item.provider_result and not item.provider_result.success %}
+            <span class="item-sub">{{ item.provider_result.error_msg|default:"创建失败" }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if action_results %}
+<div class="section-card">
+    <div class="section-header">
+        后置动作
+        <span class="count-badge">{{ action_results|length }}</span>
+    </div>
+    <div class="section-body">
+        {% for ar in action_results %}
+        <div class="action-row">
+            <div class="action-title">
+                {% if ar.provider_result and ar.provider_result.success %}
+                <i class="fa-solid fa-circle-check text-green" style="color:#10b981;"></i>
+                {% else %}
+                <i class="fa-solid fa-circle-xmark text-red" style="color:#ef4444;"></i>
+                {% endif %}
+                {{ ar.label }}
+                {% if ar.pkg_status %}
+                {% with ps=ar.pkg_status %}
+                {% if ps.skipped_packages %}
+                <span style="color:#b45309;font-size:.72rem;">跳过 {{ ps.skipped_packages|length }} 个</span>
+                {% endif %}
+                {% if ps.fallback_used %}
+                <span style="color:#b45309;font-size:.72rem;">回退 {{ ps.fallback_used|length }} 个</span>
+                {% endif %}
+                {% endwith %}
+                {% endif %}
+            </div>
+            {% if ar.pkg_status %}
+            {% with ps=ar.pkg_status %}
+            {% if ps.installed_ok %}
+            {% for pkg in ps.installed_ok %}
+            <div class="pkg-row">
+                <span class="pkg-badge ok">OK</span>
+                <span class="pkg-name">{{ pkg }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% if ps.fallback_used %}
+            {% for fb in ps.fallback_used %}
+            <div class="pkg-row">
+                <span class="pkg-badge fallback">回退</span>
+                <span class="pkg-name">{{ fb.requested }}</span>
+                <span class="pkg-note">用户版安装失败，已回退模板版 {{ fb.fallback }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% if ps.skipped_packages %}
+            {% for sk in ps.skipped_packages %}
+            <div class="pkg-row">
+                <span class="pkg-badge fail">跳过</span>
+                <span class="pkg-name">{{ sk.package }}</span>
+                <span class="pkg-note">{{ sk.reason }}</span>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not created_items and not action_results %}
+<div class="section-card">
+    <div class="section-body">
+        <div class="error-list">
+            {% for err in errors %}
+            <div class="err-item">{{ err.error_msg|default:err }}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="action-bar">
+    {% if success %}
+    <a href="{% url 'project_mgmt:detail' project_id=project_id %}" class="btn btn-primary"><i class="fa-solid fa-rectangle-list"></i> 项目详情</a>
+    {% endif %}
+    <a href="{% url 'project_mgmt:index' %}" class="btn btn-secondary"><i class="fa-solid fa-list"></i> 返回项目列表</a>
+    {% if project_dir %}
+    <button type="button" class="btn btn-info" id="btnOpenDir" data-path="{{ project_dir }}"><i class="fa-regular fa-folder-open"></i> 打开项目目录</button>
+    {% endif %}
+    {% if not success %}
+    <a href="{% url 'project_mgmt:create_wizard' %}" class="btn btn-warning"><i class="fa-solid fa-pen-to-square"></i> 重新创建</a>
+    {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+{% if not is_running %}
+<script>
+$(function(){
+    $('#btnOpenDir').on('click', function(){
+        var path = $(this).data('path');
+        $.post('{% url "project_mgmt:api_open_dir" %}', {path: path}, function(res){
+            if(!res.ok) layui.layer.msg(res.error || '打开失败');
+        });
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

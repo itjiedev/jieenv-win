@@ -1,0 +1,190 @@
+v1.8.0
+- provider_services.py verify_python_archive + health_check 补
+  creationflags=0x08000000，消除导入验证和 30s 健康探测的黑窗闪烁
+----------------------------------------------------------------------
+v1.7.0
+- 同 python_installer：删除本地 open_terminal，改为 jiecore.system_ops 统一导入
+- 解释器终端入口 + 虚拟环境终端入口均追加 PATH 前置 + activate.bat 双重保险
+----------------------------------------------------------------------
+v1.6.0
+- 补全 provider 注册，与 python_installer 同级对齐（同为 tool 分类 provider）：
+  新增 hooks.py：on_enable 注册 tool.python_archive provider（完整 lifecycle + capabilities）
+  新增 provider_services.py：8 个 service 薄包装已有能力（run_install / run_uninstall /
+    版本校验 / 下载源列表等）
+  apps.py ready() 补齐 8 个 register_service 注册，invoke_provider 调用链路完整打通
+- provider 注册后，python_main 聚合层通过 list_services() 可动态发现本应用
+----------------------------------------------------------------------
+v1.5.0
+- 修改钩子
+  * 严格卸载检查：开启 strict_uninstall_check 且归属解释器有 venv 时，
+    点击卸载/从列表移除直接弹"已拦截"提示，不再先弹确认框让用户白点一次
+  * views.IndexView 注入 strict_uninstall_check 到模板 context
+  * index.html 新增 STRICT_UNINSTALL_CHECK JS 变量
+  * JS handler 预判代码保留作为兜底
+- 向上级python_main提供数据
+----------------------------------------------------------------------
+v1.4.15
+- 锁图标移至名称前面（列表缩小时仍可见）
+- index 列宽优化：解释器路径从两行压缩为一行（按钮+路径 inline-flex）
+  * colgroup 8列冗余修正为6列对齐表头
+  * 表头 width 分配：名称22% / 版本80px / PATH60px / 虚拟环境70px / 操作100px
+----------------------------------------------------------------------
+v1.4.14
+- 锁定状态下卸载/删除按钮置灰禁用（AdminLTE .disabled class + disabled 属性）
+  * 归属解释器：卸载 / 从列表移除 按钮禁用
+  * 虚拟环境：彻底删除 / 仅删除记录 按钮禁用
+  * 静态模板 + JS 动态渲染均覆盖
+  * JS handler 预判代码保留作为兜底
+----------------------------------------------------------------------
+v1.4.13
+- 新增卸载/删除锁（locked 字段）：归属解释器和虚拟环境各有独立锁开关
+  * 锁切换操作置于下拉菜单内（不额外占用列表空间）
+  * 切换锁有二次确认提示（锁定/解锁均有警告文案）
+  * locked=True 时前端预判拦截 + 后端强制拦截（双保险）
+  * 归属解释器锁定后禁止：卸载 / 从列表移除
+  * 虚拟环境锁定后禁止：彻底删除 / 仅删除记录
+  * 列表名称列显示 🔒 图标直观标识已锁定状态
+  * 旧数据自动兜底（list/toggle 时 setdefault locked=False）
+  * 新增通用 api_toggle_lock 路由（type=owner|venv, id=记录ID）
+----------------------------------------------------------------------
+v1.4.12
+- 前端预判严格卸载检查：开启 strict_uninstall_check 且归属解释器有 venv 时，
+  点击卸载/从列表移除直接弹"已拦截"提示，不再先弹确认框让用户白点一次
+  * views.IndexView 注入 strict_uninstall_check 到模板 context
+  * index.html 新增 STRICT_UNINSTALL_CHECK JS 变量
+  * act-del-record / act-uninstall-gui click handler 开头预判拦截，命中则 layer.alert + return
+  * 后端拦截逻辑保留作为兜底（防绕过前端直接调 API）
+----------------------------------------------------------------------
+v1.4.11
+- 设置页合并为单卡片「应用设置」，安装目录 + 虚拟环境严格卸载开关统一在一个 form 内，
+  用 hr + 小标题分隔，单保存按钮同时提交两个配置项
+----------------------------------------------------------------------
+v1.4.10
+- 设置页面新增「虚拟环境设置」卡片，内含「严格卸载检查」开关
+  * 界面：AdminLTE custom-switch 开关（默认关闭）
+  * 后端 api_settings_save 解析 strict_uninstall_check 参数（on/true/1 → True）
+  * 开关开启后，有下属 venv 时卸载/移除会被后端强制拦截
+----------------------------------------------------------------------
+v1.4.9
+- 修复 DEFAULT_VENV_ROOT 路径错误：原来用 settings.BASE_DIR（jieenv\Django 项目根），
+  改为 config.constants.ENV_ROOT（项目根 jieEnv-win\），
+  最终默认目录 = jieEnv-win\lang_envs\python_archive_envs
+----------------------------------------------------------------------
+v1.4.8
+- 警告文案优化：卸载/移除前的 venv 警告从单行改为 3 行精准信息差消除
+  * 明确告知「管理记录会被清，但物理文件夹不会被删」
+  * 明确告知 venv 的 pyvenv.cfg/home 会指向失效解释器
+- 新增 strict_uninstall_check 配置开关（默认 False = 仅警告）
+  * config._DEFAULT_CONFIG 新增 strict_uninstall_check 项
+  * 开启后：若归属解释器下还有 venv，卸载/从列表移除会被后端强制拦截
+  * 前端识别 blocked=true 响应，弹出只读 alert 告知用户先处理 venv
+----------------------------------------------------------------------
+v1.4.7
+- index 列表新增「虚拟环境」列，直接显示每个 Python 实例下属的 venv 数量（可点击跳转 venv_list 页）
+- 卸载 / 从列表移除前的确认弹窗：若存在下属 venv，自动追加红色警告提示
+- api_del_record 级联清理 venv 管理记录（storage_venv.clear_by_owner），
+  返回 message 中会显示已清除的 venv 数量
+----------------------------------------------------------------------
+v1.4.6
+- 卸载 Python 解释器时级联清理其下全部虚拟环境管理记录（storage_venv.clear_by_owner）
+  * 新增 storage_venv.clear_by_owner(owner_record_id) 批量删除接口
+  * python_install.run_uninstall 在 remove_installed 之前先调 clear_by_owner，
+    卸载日志中会显示已清除的 venv 数量
+  * 磁盘目录不强制删除（venv 物理文件夹可能用户还要保留手动处理），
+    只清理 venvs.json 里的管理记录
+----------------------------------------------------------------------
+v1.4.5
+- 新安装/导入 Python 时自动保存 arch / free_threaded / with_tests 元信息
+  * views.api_install_start 从 version 缓存条目提取 arch/free_threaded/with_tests 传给 options
+  * python_install.run_install 登记 record 时写入这些字段（若存在）
+  * detect.import_folder 导入已有目录时通过 python -c 动态探测 platform.machine + sysconfig.Py_GIL_DISABLED
+- 虚拟环境归属 Python 信息卡片：架构旁自动显示 Free-Threaded（绿色 badge）和 With-Tests（蓝色 badge）标签
+- 兼容旧记录（installed.json 里没有 arch 字段的旧记录模板用 default:"-" 兜底）
+----------------------------------------------------------------------
+v1.4.4
+- 修复 import_venv 报错 'WindowsPath' object has no attribute 'strip'（Path() 返回 Path 对象不是 str，多余的 strip() 调用已删除）
+----------------------------------------------------------------------
+v1.4.3
+- 创建虚拟环境成功后改为 location.reload() 刷新整个页面（和卸载流程一致），确保新记录完整呈现
+- 归属 Python 信息卡片布局：解释器路径从第一行 col-md-4 挪到独立行 col-md-12（安装目录上方），长路径不再折行
+----------------------------------------------------------------------
+v1.4.2
+- 修复 PipListVenvView/PipInstallVenvView 包管理页打开报错 Reverse for api_pip_list with arguments ('',)
+  （PipEnvMixin.get_env_id 只认 id/env_id，venv URL kwargs key 是 venv_id，子类已 override）
+- 创建虚拟环境改为 JieTaskLog 弹窗实时操作日志 + 后台线程执行（run_in_thread），全局任务指示器正确复位
+- 空目录放行：目标目录已存在但为空 → 允许创建；已存在且非空 → 拒绝
+- 目录名校验：前后端双重正则 ^[\w\-]+$ 拒绝中文/空格/特殊字符
+- index.html 恢复为单个 dropdown：虚拟环境 + 包管理 收纳到操作下拉列表
+----------------------------------------------------------------------
+v1.4.1
+- 创建虚拟环境改为让用户选择保存目录（自定义 layer 表单：名称 + 浏览选路径）
+- 默认保存目录：{项目根}/lang_envs/python_archive_envs（config.DEFAULT_VENV_ROOT）
+- 创建前双重校验：① venvs.json 中不得已存在该路径 ② 目标目录本身不得已存在
+  （防止无意中覆盖已有目录）
+- venv_utils.create_venv 签名简化：直接接受 target_path 完整路径，不再内部拼接
+----------------------------------------------------------------------
+v1.4.0
+- 新增虚拟环境管理功能：每个 Python 实例专属 venv 管理页（非全局 tab）
+- 支持创建（默认放 install_dir/venvs 下）和导入（强制归属验证）两种方式
+- 两级异步状态验证：L1 文件系统快速验证秒开首屏 + L2 pip 命令深度验证后台串行刷新
+- 虚拟环境完整包管理：复用 python_main 通用 pip 架构，resolve_pip_env 已适配 env_id=venv_id 场景
+- 持久化存储 storage_venv.py + venv_utils.py 核心逻辑，字段预留 project_id 供未来项目关联
+- index.html 操作列改为"虚拟环境/包管理"两个独立图标按钮 + 更多 dropdown
+- 支持的 API：list/create/import/delete(含保留目录)/rename/open_terminal/verify_l1/verify
+----------------------------------------------------------------------
+v1.3.3
+- 注册 call_service('python_archive', 'resolve_pip_env', ...)，提供 env_id → {python_exe, label} 解析服务
+- storage 加 _by_id_cache dict，get_by_id 从磁盘 O(N) 变为内存 O(1)
+----------------------------------------------------------------------
+v1.3.2
+- 删除硬编码 import apps.python_main.storage：该模块不存在，archive 在
+  detect.py / python_install.py 安装、导入时每次都触发 ImportError 并打 warning
+  噪音日志。钩子机制（ext_hooks.py 注册的 python_main.pip_envs / python_main.envs）
+  已完整覆盖"宿主收集解释器列表"的能力，那段死代码是 python_main 从 storage
+  模式重构到钩子模式后遗留的
+- 删除同样硬编码依赖 python_main.storage 的 _remove_python_env 函数及所有调用点
+  （python_install.py run_uninstall），卸载流程通过 storage.remove_installed
+  清理本地记录后，宿主下次 call_hooks 时自然就查不到，无需同步清除不存在的中央列表
+- detect.py _check_pip 中的 print 调试改为 logger.debug，删除孤立的 print()
+- app_meta.py dependencies 补充 python_main:>=1.15.0 和 mainapp:>=1.3.5 依赖声明
+  （ext_hooks.py 注册了 python_main.envs / python_main.clear_cache /
+  python_main.pip_envs / mainapp.home.environments 四个扩展点，之前漏声明）
+--------------------------------------------------------------------------
+v1.3.1
+- 修改一些文字提示
+--------------------------------------------------------------------------
+v1.3.0
+- 新增修改名称功能：storage.py 添加 rename_installed，views.py 添加 api_rename，前端使用 layui.layer.prompt 弹窗输入新名称
+- 修复 version_list 页面筛选逻辑：
+--------------------------------------------------------------------------
+v1.2.0
+- 完成 python_archive 应用的完整实现
+- python_install.py: 重写为 zip 压缩包下载+解压安装模式
+  - 安装前检查目标文件夹是否存在同名，有则提示不安装
+  - 下载 zip 压缩包并解压到指定目录
+  - 不需要 py_launcher 的安装和卸载
+  - 卸载时清理 PATH 环境变量并删除安装文件夹
+- views.py: 修复所有 bug 和未定义引用
+  - 修复 api_install_start 中 version/msi_url 等未定义变量
+  - 修复 _install_worker 中 python_installer/env_ops/detect 等错误引用
+  - 添加完整的卸载 API (api_uninstall/api_uninstall_gui)
+  - 添加环境变量操作 API (api_add_path/api_open_terminal)
+  - 添加缓存清理 API (api_clear_cache)
+- env_ops.py: 新建简化版环境变量操作模块
+  - PATH 管理 (add_to_path/remove_from_path)
+  - 终端打开 (open_terminal)
+  - 列表标记 (annotate_installed)
+  - 无 py_launcher 和注册表卸载逻辑
+- storage.py: 添加 add_installed/remove_installed/clear_all_installed 函数
+- ext_hooks.py: 添加 clear_cache 和 home_environments 钩子
+- apps.py: 修复 ready() 方法注册 ext_hooks（解决 pywebview 模式不加载问题）
+- urls.py: 添加所有缺失的路由
+- 模板修复: install_options.html/index.html 使用正确的 URL 命名空间
+--------------------------------------------------------------------------
+v1.0.1
+- 适配宿主应用 python 改名为 python_main：views.py 的
+  from apps.python.views import PythonMixin 改为 apps.python_main.views
+- ext_hooks 注册的钩子名 python.envs 改为 python_main.envs
+- app_meta 菜单 parent_id 由 python 改为 python_main
+- 模板 index.html 的 {% extends "python/layout.html" %} 改为 "python_main/layout.html"
+--------------------------------------------------------------------------

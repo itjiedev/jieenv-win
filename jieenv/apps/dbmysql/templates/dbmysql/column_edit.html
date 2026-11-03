@@ -1,0 +1,93 @@
+﻿{% extends "layout_main.html" %}
+{% load static %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2">
+            <i class="fa fa-user"></i> {{ conn_info.user }}@{{ conn_info.host }}:{{ conn_info.port }}
+        </span>
+        <span class="badge badge-secondary py-2"><i class="fa fa-database"></i> {{ db }}</span>
+        <span class="badge badge-dark py-2"><i class="fa fa-table"></i> {{ table }}</span>
+    </div>
+    <div class="card-tools">
+{#        <a href="{% url 'dbmysql:columns' conn_id db table %}" class="btn btn-default btn-sm"><i class="fa fa-arrow-left"></i> 字段列表</a>#}
+        <a href="javascript:;" id="btn-logout" class="btn btn-outline-danger btn-sm"><i class="fa fa-sign-out-alt"></i> 退出连接</a>
+    </div>
+</div>
+
+{% if db_error %}
+<div class="alert alert-danger">操作异常：{{ db_error }}</div>
+{% else %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card card-primary card-outline">
+            <div class="card-header"><h3 class="card-title"><i class="fa fa-edit"></i> 编辑字段 - {{ db }}.{{ table }}.{{ col_name }}</h3></div>
+            <div class="card-body">
+                {% include "dbmysql/_column_form.html" with mode='edit' %}
+                <button type="button" id="btn-save" class="btn btn-primary"><i class="fa fa-save"></i> 保存修改</button>
+                <a href="{% url 'dbmysql:columns' conn_id db table %}" class="btn btn-default">返回</a>
+                <small class="form-text text-muted">保存将执行 MODIFY COLUMN，请确认类型变更不会导致现有数据丢失</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block js_files %}
+<script src="{% static 'dbmysql/column_type.js' %}"></script>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_COLUMN = '{% url 'dbmysql:api_column' conn_id %}';
+    var BACK_URL = '{% url 'dbmysql:columns' conn_id db table %}';
+    var COL = {{ column_json|safe }};
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    $('#btn-logout').on('click', function () {
+        $.post('{% url 'dbmysql:api_logout' %}', {conn_id: '{{ conn_id }}'}).done(function (res) {
+            window.location.href = res.redirect || '{% url 'dbmysql:index' %}';
+        });
+    });
+
+    var ct = JieColumnType.init({
+        types: {{ field_types_json|safe }},
+        select: '#ct-type', argBox: '#ct-arg-box', tipBox: '#ct-type-tip'
+    });
+
+    // 回填现有字段定义
+    ct.fill(COL.parsed);
+    $('#col-nullable').prop('checked', !!COL.nullable);
+    var def = (COL.default === null || COL.default === undefined) ? '' : String(COL.default);
+    $('#col-default').val(def);
+    $('#col-has-default').prop('checked', def !== '');
+    $('#col-comment').val(COL.comment || '');
+
+    $('#btn-save').on('click', function () {
+        var t = ct.getValue();
+        if (!t.ok) { msg(t.message, false); return; }
+        var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.post(API_COLUMN, {
+            action: 'modify', db: '{{ db }}', table: '{{ table }}',
+            name: COL.name, type: t.sql,
+            nullable: $('#col-nullable').is(':checked') ? '1' : '0',
+            has_default: $('#col-has-default').is(':checked') ? '1' : '0',
+            default: $('#col-default').val(),
+            comment: $('#col-comment').val()
+        }).done(function (res) {
+            layer.close(loadIdx);
+            msg(res.message, res.success);
+            if (res.success) { setTimeout(function () { window.location.href = BACK_URL; }, 800); }
+        });
+    });
+});
+</script>
+{% endblock %}

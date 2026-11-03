@@ -1,0 +1,271 @@
+{% extends 'layout_main.html' %}
+
+{% block page_content %}
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-cogs mr-1"></i>应用管理</h3>
+        <div class="card-tools">
+          <form method="post" action="{% url 'jiecore:sync_apps' %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-sync-alt"></i> 同步磁盘</button>
+          </form>
+          <form method="post" action="{% url 'jiecore:refresh_cache' %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-success"><i class="fas fa-broom"></i> 刷新缓存</button>
+          </form>
+          <button type="button" class="btn btn-sm btn-primary" data-toggle="modal" data-target="#installModal">
+            <i class="fas fa-plus"></i> 安装应用
+          </button>
+        </div>
+      </div>
+      <div class="card-body table-responsive p-0">
+        <table class="table table-hover text-nowrap">
+          <thead>
+            <tr>
+              <th>应用名</th>
+              <th>显示名称</th>
+              <th>版本</th>
+              <th>状态</th>
+              <th>类型</th>
+              <th>依赖</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for name, info in apps.items %}
+            <tr>
+              <td><code>{{ name }}</code></td>
+              <td>{{ info.display_name|default:name }}</td>
+              <td>
+                <span class="badge badge-info">v{{ info.version }}</span>
+                {% if info.upgrade_available %}
+                <span class="badge badge-warning" title="可升级至 v{{ info.upgrade_version }}">
+                  <i class="fas fa-arrow-up"></i> {{ info.upgrade_version }}
+                </span>
+                {% endif %}
+              </td>
+              <td>
+                {% if info.is_enabled %}
+                  <span class="badge badge-success">已启用</span>
+                {% else %}
+                  <span class="badge badge-secondary">未启用</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if info.is_root %}
+                  <span class="badge badge-danger">根应用</span>
+                {% elif name == 'jiecore' %}
+                  <span class="badge badge-primary">核心</span>
+                {% else %}
+                  <span class="badge badge-light">扩展</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if info.dependencies %}
+                  {% for dep, ver in info.dependencies.items %}
+                    <span class="badge badge-outline-secondary">{{ dep }}{{ ver }}</span>
+                  {% endfor %}
+                {% else %}
+                  <span class="text-muted">无</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if not info.is_root and name != 'jiecore' %}
+                  {% if info.is_enabled %}
+                    <form method="post" action="{% url 'jiecore:app_disable' name %}" style="display:inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-xs btn-warning" onclick="return confirm('确认禁用 {{ info.display_name }}?')"><i class="fas fa-stop"></i> 禁用</button>
+                    </form>
+                  {% else %}
+                    <form method="post" action="{% url 'jiecore:app_enable' name %}" style="display:inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-xs btn-success"><i class="fas fa-play"></i> 启用</button>
+                    </form>
+                  {% endif %}
+                  <form method="post" action="{% url 'jiecore:app_uninstall' name %}" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-xs btn-danger" onclick="return confirm('确认卸载 {{ info.display_name }}?')"><i class="fas fa-times"></i> 卸载</button>
+                  </form>
+                  <form method="post" action="{% url 'jiecore:app_delete' name %}" style="display:inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-xs btn-outline-danger" onclick="return confirm('确认彻底删除 {{ info.display_name }}? 此操作不可恢复!')"><i class="fas fa-trash"></i> 删除</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted">暂无已注册的应用</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 可用升级包 -->
+{% if upgrade_packages %}
+<div class="row">
+  <div class="col-12">
+    <div class="card card-outline card-warning">
+      <div class="card-header"><h3 class="card-title"><i class="fas fa-download mr-1"></i>可用升级包</h3></div>
+      <div class="card-body table-responsive p-0">
+        <table class="table table-hover text-nowrap">
+          <thead><tr><th>文件名</th><th>类型</th><th>应用/模块</th><th>版本</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            {% for pkg in upgrade_packages %}
+            <tr>
+              <td>{{ pkg.filename }}</td>
+              <td>
+                {% if pkg.app_name == 'platform' %}
+                  <span class="badge badge-danger">平台</span>
+                {% else %}
+                  <span class="badge badge-info">应用</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if pkg.app_name == 'platform' %}
+                  <i class="fas fa-cloud"></i> 整个平台
+                {% else %}
+                  {{ pkg.app_name }}
+                {% endif %}
+              </td>
+              <td>v{{ pkg.version }}</td>
+              <td>
+                {% if pkg.can_upgrade %}
+                  <span class="badge badge-warning">可升级</span>
+                {% else %}
+                  <span class="badge badge-secondary">已是最新</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if pkg.can_upgrade %}
+                  {% if pkg.app_name == 'platform' %}
+                  <button type="button" class="btn btn-xs btn-danger btn-platform-upgrade" data-zip="{{ pkg.file }}" data-filename="{{ pkg.filename }}">
+                    <i class="fas fa-arrow-up"></i> 升级平台
+                  </button>
+                  {% else %}
+                  <a href="{% url 'appmanage:upgrade' pkg.app_name %}" class="btn btn-xs btn-primary">
+                    <i class="fas fa-arrow-up"></i> 升级
+                  </a>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 安装弹窗 -->
+<div class="modal fade" id="installModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title">安装应用</h4>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 安装方式切换 -->
+        <ul class="nav nav-tabs mb-3" id="installTab" role="tablist">
+          <li class="nav-item">
+            <a class="nav-link active" id="zip-tab" data-toggle="tab" href="#zipTab" role="tab">上传 Zip 包</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="path-tab" data-toggle="tab" href="#pathTab" role="tab">指定路径</a>
+          </li>
+        </ul>
+        <div class="tab-content" id="installTabContent">
+          <!-- Zip 上传 -->
+          <div class="tab-pane fade show active" id="zipTab" role="tabpanel">
+            <form method="post" action="{% url 'jiecore:app_install' %}" enctype="multipart/form-data">
+              {% csrf_token %}
+              <div class="form-group">
+                <label>选择应用包 (.zip)</label>
+                <div class="custom-file">
+                  <input type="file" class="custom-file-input" id="zip_file" name="zip_file" accept=".zip">
+                  <label class="custom-file-label" for="zip_file">请选择文件</label>
+                </div>
+                <small class="form-text text-muted">
+                  文件格式: appname-version.zip，例如 myapp-1.0.0.zip
+                </small>
+              </div>
+              <div class="text-right">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> 安装</button>
+              </div>
+            </form>
+          </div>
+          <!-- 指定路径 -->
+          <div class="tab-pane fade" id="pathTab" role="tabpanel">
+            <form method="post" action="{% url 'jiecore:app_install' %}">
+              {% csrf_token %}
+              <div class="form-group">
+                <label>应用 Python 路径</label>
+                <input type="text" class="form-control" name="app_path" placeholder="例如: apps.home 或 myplugin">
+                <small class="form-text text-muted">
+                  输入应用在 Python 中的点分路径，系统自动定位并安装该应用
+                </small>
+              </div>
+              <div class="text-right">
+                <button type="submit" class="btn btn-primary"><i class="fas fa-folder-open"></i> 安装</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$('.custom-file-input').on('change', function() {
+    var fileName = $(this).val().split('\\').pop();
+    $(this).next('.custom-file-label').html(fileName);
+});
+
+$(document).on('click', '.btn-platform-upgrade', function() {
+    var btn = $(this);
+    var filename = btn.data('filename');
+    if (!confirm('确认升级平台？\n升级包: ' + filename + '\n\n升级将覆盖平台核心文件，建议先备份。')) return;
+
+    btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 升级中...');
+
+    var formData = new FormData();
+    formData.append('zip_path', btn.data('zip'));
+    formData.append('zip_file', new File([], filename));
+
+    $.ajax({
+        url: "{% url 'jiecore:api_platform_upgrade' %}",
+        type: 'POST',
+        data: {
+            zip_path: btn.data('zip'),
+            csrfmiddlewaretoken: '{{ csrf_token }}'
+        },
+        success: function(res) {
+            if (res.success) {
+                alert(res.message || '平台升级成功');
+                setTimeout(function() { location.reload(); }, 1000);
+            } else {
+                alert('升级失败: ' + (res.message || '未知错误'));
+                btn.prop('disabled', false).html('<i class="fas fa-arrow-up"></i> 升级平台');
+            }
+        },
+        error: function() {
+            alert('请求失败，请检查网络后重试');
+            btn.prop('disabled', false).html('<i class="fas fa-arrow-up"></i> 升级平台');
+        }
+    });
+});
+</script>
+{% endblock %}

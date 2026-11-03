@@ -1,0 +1,165 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-success card-outline">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-plus"></i> 添加 MySQL 实例</h3></div>
+    <div class="card-body">
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label">安装目录 <span class="text-danger">*</span></label>
+            <div class="col-sm-9">
+                <div class="input-group">
+                    <input type="text" id="add-install-dir" class="form-control" placeholder="点右侧浏览选择，或手动输入">
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-outline-secondary" id="btn-dir-browse">
+                            <i class="fa fa-folder-open"></i> 浏览...
+                        </button>
+                    </div>
+                </div>
+                <small class="form-text text-muted">选择 MySQL 安装目录后自动识别版本、端口、数据目录等信息</small>
+            </div>
+        </div>
+
+        <div id="preview-section" style="display:none">
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">识别结果</label>
+                <div class="col-sm-9">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body py-2 px-3" style="font-size:13px">
+                            <div id="preview-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group row">
+            <label class="col-sm-3 col-form-label">显示名称</label>
+            <div class="col-sm-9">
+                <input type="text" id="add-name" class="form-control" placeholder="不填则自动取服务名/目录名">
+            </div>
+        </div>
+
+        <div class="form-group row mb-0">
+            <div class="col-sm-9 offset-sm-3">
+                <button type="button" id="btn-submit" class="btn btn-success" disabled>
+                    <i class="fa fa-check"></i> 确定添加
+                </button>
+                <a href="{% url 'dbmysql:index' %}" class="btn btn-default">返回</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var resolveTimer = null;
+    var resolvedInfo = null;
+    var nameManuallyEdited = false;
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    function doResolve(dir) {
+        clearTimeout(resolveTimer);
+        if (!dir) {
+            $('#preview-section').hide();
+            $('#btn-submit').prop('disabled', true);
+            resolvedInfo = null;
+            return;
+        }
+        resolveTimer = setTimeout(function () {
+            var loadIdx = layer.msg('正在解析安装目录...', {icon: 16, shade: [0.3, '#000'], time: 0});
+            $.post('{% url "dbmysql:api_instance_resolve" %}',
+                {install_dir: dir}).done(function (res) {
+                layer.close(loadIdx);
+                if (res.success) {
+                    resolvedInfo = res.info;
+                    var rows = [];
+                    rows.push('<div class="d-flex"><span class="text-muted" style="width:90px">版本：</span><span>' + (res.info.version || '未识别') + '</span></div>');
+                    rows.push('<div class="d-flex"><span class="text-muted" style="width:90px">端口：</span><span>' + res.info.port + '</span></div>');
+                    rows.push('<div class="d-flex"><span class="text-muted" style="width:90px">数据目录：</span><span style="word-break:break-all">' + (res.info.data_dir || '未识别') + '</span></div>');
+                    if (res.info.service_name) {
+                        rows.push('<div class="d-flex"><span class="text-muted" style="width:90px">服务名：</span><span>' + res.info.service_name + '</span></div>');
+                    }
+                    rows.push('<div class="d-flex"><span class="text-muted" style="width:90px">运行模式：</span><span>' + (res.info.run_mode === 'service' ? 'Windows 服务' : '进程模式') + '</span></div>');
+                    rows.push('<div class="d-flex"><span class="text-muted" style="width:90px">状态：</span><span class="' + (res.info.reachable ? 'text-success' : 'text-muted') + '">' + (res.info.reachable ? '运行中' : '未运行') + '</span></div>');
+                    $('#preview-content').html(rows.join(''));
+                    $('#preview-section').show();
+                    $('#btn-submit').prop('disabled', false);
+                    if (!nameManuallyEdited) {
+                        $('#add-name').val(res.info.name || '');
+                    }
+                } else {
+                    resolvedInfo = null;
+                    $('#preview-content').html('<span class="text-danger"><i class="fa fa-exclamation-circle"></i> ' + res.message + '</span>');
+                    $('#preview-section').show();
+                    $('#btn-submit').prop('disabled', true);
+                }
+            }).fail(function () {
+                resolvedInfo = null;
+                $('#preview-content').html('<span class="text-danger">请求失败</span>');
+                $('#preview-section').show();
+                $('#btn-submit').prop('disabled', true);
+            });
+        }, 300);
+    }
+
+    // 浏览按钮
+    $('#btn-dir-browse').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 MySQL 安装目录',
+            initialPath: $('#add-install-dir').val().trim(),
+            onSelect: function (path) {
+                $('#add-install-dir').val(path);
+                doResolve(path);
+            }
+        });
+    });
+
+    // 输入框变化时自动解析
+    $('#add-install-dir').on('input', function () {
+        doResolve($(this).val().trim());
+    });
+
+    // 名称手动修改标记
+    $('#add-name').on('input', function () {
+        nameManuallyEdited = true;
+    });
+
+    // 提交
+    $('#btn-submit').on('click', function () {
+        var dir = $('#add-install-dir').val().trim();
+        if (!dir) {
+            msg('请选择 MySQL 安装目录', false);
+            return;
+        }
+        var loadIdx = null;
+        layui.use('layer', function () {
+            loadIdx = layui.layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        });
+        $.post('{% url "dbmysql:api_instance_add" %}',
+            {install_dir: dir, name: $('#add-name').val().trim()}).done(function (res) {
+            if (loadIdx) layui.layer.close(loadIdx);
+            if (res.success) {
+                msg(res.message, true);
+                setTimeout(function () {
+                    window.location.href = '{% url "dbmysql:index" %}';
+                }, 1000);
+            } else {
+                msg(res.message, false);
+            }
+        }).fail(function () {
+            if (loadIdx) layui.layer.close(loadIdx);
+            msg('请求失败', false);
+        });
+    });
+});
+</script>
+{% endblock %}

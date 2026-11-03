@@ -1,0 +1,36 @@
+meta = {
+    'app_name': 'project_mgmt',
+    'display_name': 'project项目管理',
+    'version': '1.1.0',
+    'description': '项目生命周期管理，基于 provider_catalog + event_bus + app_services 三层积木式架构',
+    "is_platform_fixed": False,
+    "is_enabled": True,
+    'is_root': False,
+    'url_prefix': 'projects',
+    'dependencies': {
+        'jieenv_platform': '>=1.44.0',
+        'jiecore': '>=1.36.0',
+        'mainapp': '>=1.3.5',
+    },
+    'pip_dependencies': {},
+    'menus': [
+        {
+            'menu_id': 'project_mgmt',
+            'parent_id': '',
+            'name': '项目管理',
+            'icon': 'fa-solid fa-diagram-project',
+            'sort': 600,
+            'is_show': True,
+            'perm_code': '',
+            'path': {
+                'viewname': 'project_mgmt:index',
+                'urlconf': '',
+                'args': [],
+                'kwargs': {},
+                'current_app': '',
+                'query': {},
+                'fragment': '',
+            },
+        },
+    ],
+}

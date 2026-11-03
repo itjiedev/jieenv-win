@@ -1,0 +1,173 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-success card-outline">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-cogs"></i> 安装选项</h3></div>
+    <div class="card-body">
+        <form id="install-form">
+            <div class="form-group row">
+                <label class="col-sm-1 col-form-label">名称 <span class="text-danger">*</span></label>
+                <div class="col-sm-11">
+                    <input type="text" class="form-control" id="opt-name" value="{{ entry.display_name }}" required>
+                    <small class="form-text text-muted">为这个 Python 环境起个名字，用于区分不同安装</small>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-1 col-form-label">安装目录</label>
+                <div class="col-sm-11">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="opt-install-dir" value="{{ default_install_dir }}">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-install-dir-browse">
+                                <i class="fa fa-folder-open"></i> 浏览</button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">Python 将解压到此目录</small>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-1 col-form-label">下载源</label>
+                <div class="col-sm-11">
+                    <select class="form-control" id="opt-download-source">
+                        {% for src in download_sources %}
+                        <option value="{{ src.name }}"
+                            {% if current_source and current_source.name == src.name %}selected{% endif %}
+                            {% if not current_source and src.name == 'auto' %}selected{% endif %}>
+                            {{ src.display_name }}{% if src.url %}（{{ src.url }}）{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group row mb-0">
+                <div class="col-sm-9 offset-sm-3">
+                    <button type="button" id="btn-start-install" class="btn btn-success">
+                        <i class="fa fa-play"></i> 开始下载并安装
+                    </button>
+                    <a href="javascript:history.back();" id="btn-back-tab" class="btn btn-default">返回</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var VERSION_ID = '{{ entry.id }}';
+    var VERSION = '{{ entry.version }}';
+    var INDEX_URL = '{% url "python_archive:index" %}';
+    // 安装目录文件夹名：将 id 中的中划线替换为下划线，最后一段替换为 _archive
+    // 如 python-3-14-8-amd64-zip -> python_3_14_8_amd64_archive
+    var PY_SUFFIX = (function () {
+        var name = VERSION_ID.replace(/-/g, '_');
+        var idx = name.lastIndexOf('_');
+        return idx > 0 ? name.substring(0, idx) + '_archive' : name + '_archive';
+    })();
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    // 在所选目录后拼接 PY_SUFFIX；已以该后缀结尾则不重复追加
+    function appendSuffix(path) {
+        var p = (path || '').replace(/[\\\/]+$/, '');
+        if (!p) { return PY_SUFFIX; }
+        var segs = p.split(/[\\\/]/);
+        if (segs[segs.length - 1].toLowerCase() === PY_SUFFIX.toLowerCase()) {
+            return p;
+        }
+        return p + '\\' + PY_SUFFIX;
+    }
+
+    // 浏览按钮：选择目录后自动追加文件夹名作为最终安装目录
+    $('#btn-install-dir-browse').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 Python 安装目录',
+            initialPath: $('#opt-install-dir').val().trim(),
+            onSelect: function (path) {
+                $('#opt-install-dir').val(appendSuffix(path));
+            }
+        });
+    });
+
+    // 返回按钮
+    $('#btn-back-tab').on('click', function () {
+        window.location.href = INDEX_URL;
+    });
+
+    // 开始安装：创建后台任务 → JieTaskLog 轮询展示下载+安装日志
+    $('#btn-start-install').on('click', function () {
+        var name = $('#opt-name').val().trim();
+        if (!name) {
+            msg('请填写名称', false);
+            return;
+        }
+        var installDir = $('#opt-install-dir').val().trim();
+        if (!installDir) {
+            msg('请填写安装目录', false);
+            return;
+        }
+        var sourceName = $('#opt-download-source option:selected').text().trim();
+
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm(
+                '即将下载并解压 Python ' + VERSION + ' 到 ' + installDir + '。<br>'
+                + '名称：' + name + '<br>'
+                + '下载源：' + sourceName + '<br>'
+                + '安装过程在后台执行，日志窗口可实时查看进度，确定继续？',
+                {icon: 3, title: '确认安装'}, function (index) {
+                layer.close(index);
+                startInstall();
+            });
+        });
+    });
+
+    function startInstall() {
+        var $btn = $('#btn-start-install');
+        $btn.prop('disabled', true);
+
+        $.post('{% url "python_archive:api_install_start" %}', {
+            version_id: VERSION_ID,
+            version: VERSION,
+            name: $('#opt-name').val().trim(),
+            install_dir: $('#opt-install-dir').val(),
+            download_source: $('#opt-download-source').val(),
+            csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val()
+        }).done(function (res) {
+            if (!res || !res.success || !res.task_id) {
+                $btn.prop('disabled', false);
+                msg((res && res.message) || '创建安装任务失败', false);
+                return;
+            }
+            // 交给 jiecore 通用任务日志弹窗：黑底白字滚动日志 + 自动轮询
+            JieTaskLog.open({
+                title: '下载并安装 Python ' + VERSION,
+                taskId: res.task_id,
+                width: '640px',
+                height: '480px',
+                logHeight: 320,
+                onSuccess: function () {
+                    window.location.href = INDEX_URL;
+                },
+                onFail: function (result) {
+                    $btn.prop('disabled', false);
+                    var m = (result && result.message) || '安装失败';
+                    msg(m, false);
+                }
+            });
+        }).fail(function () {
+            $btn.prop('disabled', false);
+            msg('请求失败，请检查网络', false);
+        });
+    }
+});
+</script>
+{% endblock %}

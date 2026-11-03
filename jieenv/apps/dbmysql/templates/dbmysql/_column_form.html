@@ -1,0 +1,53 @@
+{# 字段表单公共字段区（column_add.html / column_edit.html 共用） #}
+{# 使用时通过 {% include "dbmysql/_column_form.html" with mode='add' %} 传入 mode #}
+<div class="form-group">
+    <label>字段名</label>
+    {% if mode == 'edit' %}
+    <input type="text" class="form-control" value="{{ column.name }}" disabled>
+    <small class="form-text text-muted">字段名不可在此修改（改名请使用 SQL）</small>
+    {% else %}
+    <input type="text" class="form-control" id="col-name" placeholder="字母/数字/下划线/中文">
+    {% endif %}
+</div>
+<div class="form-group">
+    <label>字段类型</label>
+    <select class="form-control" id="ct-type"></select>
+    <small class="form-text text-muted" id="ct-type-tip"></small>
+</div>
+<div id="ct-arg-box"></div>
+<div class="form-group">
+    <div class="custom-control custom-checkbox">
+        <input type="checkbox" class="custom-control-input" id="col-nullable" checked>
+        <label class="custom-control-label" for="col-nullable">允许为空 (NULL)</label>
+    </div>
+    {% if mode != 'edit' %}
+    <div class="custom-control custom-checkbox">
+        <input type="checkbox" class="custom-control-input" id="col-pk">
+        <label class="custom-control-label" for="col-pk">设为主键</label>
+    </div>
+    {% endif %}
+</div>
+<div class="form-group">
+    <div class="custom-control custom-checkbox">
+        <input type="checkbox" class="custom-control-input" id="col-has-default">
+        <label class="custom-control-label" for="col-has-default">设置默认值</label>
+    </div>
+    <input type="text" class="form-control mt-1" id="col-default" placeholder="默认值，可填 CURRENT_TIMESTAMP">
+</div>
+<div class="form-group">
+    <label>注释（可选）</label>
+    <input type="text" class="form-control" id="col-comment">
+</div>
+{% if mode != 'edit' %}
+<div class="form-group">
+    <label>位置</label>
+    <select class="form-control" id="col-position">
+        <option value="" selected>末尾</option>
+        <option value="first">最前 (FIRST)</option>
+        <option value="after">指定字段之后</option>
+    </select>
+    <select class="form-control mt-1" id="col-after" style="display:none">
+        {% for c in columns %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+    </select>
+</div>
+{% endif %}

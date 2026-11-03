@@ -1,0 +1,37 @@
+meta = {
+    # 基础信息
+    'app_name': '{{ app_name }}',
+    'display_name': '{{ app_name }}',
+    'version': '1.0.0',
+    'description': '{{ app_name }}',
+    'is_root': False,
+    'is_enabled': True,
+    'url_prefix': '',
+    'dependencies': {
+        'jiecore': '>=1.36.0',
+    },
+    'pip_dependencies': {
+        # 'xxx': '>=xxx.xxx.xx',
+    },
+    'menus': [
+        {
+            'menu_id': '{{ app_name }}',
+            'parent_id': '',
+            'name': '{{ app_name }}',
+            'icon': '',
+            'sort': 100,
+            'is_show': True,
+            'perm_code': '',
+            'path': {
+                'viewname': '{{ app_name }}:index',
+                'urlconf': '',
+                'args': [],
+                'kwargs': {},
+                'current_app': '',
+                'query': {},
+                'fragment': '',
+            },
+        },
+
+    ],
+}

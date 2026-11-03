@@ -1,0 +1,18 @@
+{% extends "layout_base.html" %}
+
+{% block page_content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <h1 class="text-primary">🚀 {{ site_title }}</h1>
+                    <p class="text-muted mt-3">服务已正常运行</p>
+                    <p class="text-muted">当前尚未安装或启用任何应用，暂无页面可展示。</p>
+                    <p class="text-muted">可通过 <code>/jiecore/</code> 访问管理接口，或安装应用后访问对应路由。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

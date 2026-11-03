@@ -1,0 +1,83 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-info card-outline">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fa fa-server"></i> 设置下载源</h3>
+    </div>
+    <div class="card-body">
+        <p class="text-muted">
+            “自动探测”仅在安装时将按顺序测试并使用第一个可用服务器，但不保证下载速度，建议选择已经明确高效的下载服务源。<br/>
+        </p>
+
+        <form id="source-form">
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">默认下载源</label>
+                <div class="col-sm-9">
+                    <select class="form-control" id="sel-source">
+                        {% for src in download_sources %}
+                        <option value="{{ src.name }}"
+                            {% if current_source and current_source.name == src.name %}selected{% endif %}
+                            {% if not current_source and src.name == 'auto' %}selected{% endif %}>
+                            {{ src.display_name }}{% if src.url %}（{{ src.url }}）{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted" id="source-hint">
+                        当前：{% if current_source %}{{ current_source.name }}（{{ current_source.url }}）{% else %}自动探测{% endif %}
+                    </small>
+                </div>
+            </div>
+
+            <div class="form-group row mb-0">
+                <div class="col-sm-9 offset-sm-3">
+                    <button type="button" id="btn-save-source" class="btn btn-primary">
+                        <i class="fa fa-save"></i> 保存
+                    </button>
+                    <a href="{% url 'python_installer:version_list' %}" class="btn btn-default">返回版本列表</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var CSRF = $('input[name=csrfmiddlewaretoken]').val();
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    $('#btn-save-source').on('click', function () {
+        var name = $('#sel-source').val();
+        var $btn = $(this);
+        $btn.prop('disabled', true);
+
+        $.post('{% url "python_installer:api_set_download_source" %}', {
+            name: name,
+            csrfmiddlewaretoken: CSRF
+        }).done(function (res) {
+            $btn.prop('disabled', false);
+            if (res && res.success) {
+                msg(res.message || '已保存', true);
+                var cur = res.current || {};
+                $('#source-hint').text('当前：' + (cur.display_name || cur.name || '自动探测')
+                    + (cur.url ? '（' + cur.url + '）' : ''));
+            } else {
+                msg((res && res.message) || '保存失败', false);
+            }
+        }).fail(function () {
+            $btn.prop('disabled', false);
+            msg('请求失败，请检查网络', false);
+        });
+    });
+});
+</script>
+{% endblock %}

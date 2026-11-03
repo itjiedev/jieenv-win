@@ -1,0 +1,122 @@
+{% extends "layout_main.html" %}
+{% block page_title %}{{ page_title|default:"删除项目" }}{% endblock %}
+
+{% block page_content %}
+{% if not project_found %}
+<div class="alert alert-warning">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    项目不存在或已被删除。
+    <a href="{% url 'project_mgmt:index' %}" class="btn btn-link">返回项目列表</a>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header bg-warning text-dark">
+        <div class="card-title">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            删除项目 "{{ project.name }}"
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="delete-preview">
+            <div class="alert alert-warning">
+                <i class="fa-solid fa-circle-info"></i>
+                <strong>软删除（移入回收站）</strong>
+                <ul class="mb-0 mt-2 pl-3">
+                    <li>项目配置将从列表移除，移到回收站（30 天内可恢复）</li>
+                    <li><strong>所有组件资源完整保留</strong>：虚拟环境、数据库、项目目录都不会动</li>
+                    <li>如需彻底清理资源，请从回收站执行"彻底删除"</li>
+                </ul>
+            </div>
+
+            <div class="mb-3">
+                <h6><i class="fa-solid fa-folder-open"></i> 项目目录</h6>
+                <code>{{ project.project_dir|default:"（未设置）" }}</code>
+            </div>
+
+            <div class="mb-3">
+                <h6><i class="fa-solid fa-puzzle-piece"></i> 已绑定组件 <span class="badge badge-secondary">{{ total_components }}</span></h6>
+                {% if preview_items %}
+                <ul class="list-group list-group-flush">
+                    {% for item in preview_items %}
+                    <li class="list-group-item d-flex align-items-center py-1">
+                        <i class="{{ item.icon }} text-muted mr-2"></i>
+                        <span class="font-weight-medium">{{ item.label }}</span>
+                        <span class="text-muted ml-2 small">[{{ item.provider_key }}]</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="text-muted small">（没有绑定的组件）</div>
+                {% endif %}
+            </div>
+
+            <hr>
+
+            <div class="d-flex gap-2">
+                <a href="{% url 'project_mgmt:index' %}" class="btn btn-secondary">
+                    <i class="fa-solid fa-arrow-left"></i> 取消
+                </a>
+                <button type="button" class="btn btn-warning" id="btn-confirm-delete">
+                    <i class="fa-solid fa-box-archive"></i> 移入回收站
+                </button>
+            </div>
+        </div>
+
+        <div id="delete-result" style="display:none; margin-top: 10px;"></div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+{% if project_found %}
+<script>
+(function() {
+    var projectId = "{{ project.id|escapejs }}";
+    var projectName = "{{ project.name|escapejs }}";
+
+    $('#btn-confirm-delete').on('click', function() {
+        layui.layer.confirm(
+            '确认将 <b>' + escapeHtml(projectName) + '</b> 移入回收站吗？<br>' +
+            '<small class="text-muted">组件资源完整保留，可随时恢复</small>',
+            {icon: 3, title: '移入回收站', btn: ['确认移入', '取消']},
+            function(idx) {
+                layui.layer.close(idx);
+                var $btn = $('#btn-confirm-delete').prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
+                $.post('{% url "project_mgmt:api_delete_execute" %}', {
+                    project_id: projectId,
+                }, function(resp) {
+                    if (resp.ok) {
+                        $('#delete-preview').hide();
+                        var html = '';
+                        html += '<div class="alert alert-success">';
+                        html += '<i class="fa-solid fa-circle-check"></i> ';
+                        html += '项目 "' + escapeHtml(resp.project_name || projectName) + '" 已移入回收站';
+                        html += '</div>';
+                        html += '<div class="d-flex gap-2">';
+                        html += '<a href="{% url "project_mgmt:index" %}" class="btn btn-primary"><i class="fa-solid fa-arrow-left"></i> 返回项目列表</a>';
+                        html += '<a href="{% url "project_mgmt:trash_index" %}" class="btn btn-secondary"><i class="fa-solid fa-trash-can"></i> 查看回收站</a>';
+                        html += '</div>';
+                        $('#delete-result').html(html).show();
+                    } else {
+                        alert(resp.error || '操作失败');
+                        $btn.prop('disabled', false).html('<i class="fa-solid fa-box-archive"></i> 移入回收站');
+                    }
+                }, 'json').fail(function(xhr) {
+                    alert('请求失败: ' + xhr.responseText);
+                    $btn.prop('disabled', false).html('<i class="fa-solid fa-box-archive"></i> 移入回收站');
+                });
+            }
+        );
+    });
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

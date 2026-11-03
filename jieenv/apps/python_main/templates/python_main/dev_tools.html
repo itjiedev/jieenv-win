@@ -1,0 +1,141 @@
+{% extends "python_main/layout.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+    var layer = layui.layer, $ = layui.$, util = layui.util;
+
+    util.on('lay-on', {
+      startPycharm: function () {
+        // 提权启动 PyCharm：后端登记 jiecore.tasks 后台任务并回传 task_id，
+        // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
+        $.post('{% url "python_main:api_start_pycharm" %}', {}).done(function (res) {
+          if (!res || !res.success) {
+            layer.msg((res && res.message) || '启动 PyCharm 失败', { icon: 2, time: 4000 });
+            return;
+          }
+          JieTaskLog.open({
+            title: '启动 PyCharm',
+            taskId: res.task_id,
+            onSuccess: function () {
+              {#layer.msg('PyCharm 已启动', { icon: 1, time: 2000 });#}
+            },
+            onFail: function (result) {
+              {#layer.msg((result && result.message) || 'PyCharm 启动失败', { icon: 2, time: 5000 });#}
+            }
+          });
+        }).fail(function (xhr) {
+          // 原先一律提示“请检查网络”，把 403（CSRF 校验未过）与 5xx（后端提权抛异常）
+          // 都伪装成网络故障，排查时完全找不到方向；这里按状态码给出真实原因，
+          // 只有 status 为 0（连接未建立）才谈网络
+          var msg;
+          if (!xhr || !xhr.status) {
+            msg = '无法连接后台服务，请确认服务仍在运行后重试';
+          } else if (xhr.status === 403) {
+            msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+          } else {
+            msg = '启动请求失败（HTTP ' + xhr.status + '）';
+          }
+          layer.msg(msg, { icon: 2, time: 4000 });
+        });
+      },
+
+      startVscode: function () {
+        // 启动 VSCode（非提权，用户态编辑器）：后端登记 jiecore.tasks 后台任务并回传
+        // task_id，前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
+        $.post('{% url "python_main:api_start_vscode" %}', {}).done(function (res) {
+          if (!res || !res.success) {
+            layer.msg((res && res.message) || '启动 VSCode 失败', { icon: 2, time: 4000 });
+            return;
+          }
+          JieTaskLog.open({
+            title: '启动 VSCode',
+            taskId: res.task_id,
+            onSuccess: function () {},
+            onFail: function (result) {
+              layer.msg((result && result.message) || 'VSCode 启动失败', { icon: 2, time: 5000 });
+            }
+          });
+        }).fail(function (xhr) {
+          var msg;
+          if (!xhr || !xhr.status) {
+            msg = '无法连接后台服务，请确认服务仍在运行后重试';
+          } else if (xhr.status === 403) {
+            msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+          } else {
+            msg = '启动请求失败（HTTP ' + xhr.status + '）';
+          }
+          layer.msg(msg, { icon: 2, time: 4000 });
+        });
+      }
+});
+})
+</script>
+{% endblock %}
+
+
+{% block provider_content %}
+<div class="row mt-3">
+    <div class="col-12 col-sm-6 col-md-4 d-flex align-items-stretch flex-column">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+<div class="col-4 text-center">
+  <div style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;">
+    <img src="{% static 'python_main/pycharm.svg' %}" style="width: 60px; height: 60px;" />
+  </div>
+</div>
+<div class="col-8">
+    <h2 class="lead text-bold text-truncate" title="Pycharm">Pycharm</h2>
+    <div class="text-muted text-sm">{% if pycharm %}<b>已安装:</b> {{ pycharm.DisplayName }}{% else %}未安装{% endif %} </div>
+</div>
+                </div>
+            </div>
+            <div class="card-footer">
+{% if pycharm %}
+    <button class="btn btn-primary btn-sm" lay-on="startPycharm">启动</button>
+    <a href="{% url 'python_main:pycharm_detail' %}" class="btn btn-info btn-sm">详情</a>
+{% endif %}
+<a href="{% url 'python_main:pycharm_versions' %}" class="btn btn-success btn-sm">
+  {% if pycharm %}下载{% else %}安装{% endif %}
+</a>
+
+<a href="https://www.jetbrains.com/zh-cn/pycharm/download/other/" target="_blank" class="btn btn-outline-success btn-sm float-right">官网</a>
+            </div>
+        </div>
+</div>
+
+    <div class="col-12 col-sm-6 col-md-4 d-flex align-items-stretch flex-column">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+<div class="col-4 text-center">
+  <div style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;">
+    <img src="{% static 'python_main/vscode.svg' %}" style="width: 60px; height: 60px;" />
+  </div>
+</div>
+<div class="col-8">
+    <h2 class="lead text-bold text-truncate" title="Visual Studio Code">Visual Studio Code</h2>
+    <div class="text-muted text-sm">{% if vscode %}<b>已安装: </b> VSCode {{ vscode.version }}{% else %}未安装{% endif %}</div>
+</div>
+                </div>
+            </div>
+            <div class="card-footer">
+{% if vscode %}
+    <button class="btn btn-primary btn-sm" lay-on="startVscode">启动</button>
+    <a href="{% url 'python_main:vscode_detail' %}" class="btn btn-info btn-sm">详情</a>
+{% else %}
+<a href="{% url 'python_main:vscode_install' %}" class="btn btn-success btn-sm">安装</a>
+{% endif %}
+
+<a href="https://code.visualstudio.com/Download" target="_blank" class="btn btn-outline-success btn-sm float-right">官网</a>
+            </div>
+        </div>
+</div>
+
+
+
+
+</div>
+{% endblock %}

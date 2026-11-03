@@ -1,0 +1,98 @@
+{% extends "layout_embed.html" %}
+
+{% block page_title %}安装应用{% endblock %}
+{% block embed_title %}安装应用{% if app_name %}：{{ app_name }}{% endif %}{% endblock %}
+
+{% block page_content %}
+<div class="embed-card">
+    <div class="card-body">
+        {% if app_name %}
+        <div class="alert alert-info py-2 mb-3">
+            <i class="fa-solid fa-info-circle"></i> 正在安装：<strong>{{ app_name }}</strong>
+        </div>
+        {% endif %}
+        <form id="install-zip-form" method="post" enctype="multipart/form-data"
+              data-url="{% url 'jiecore:api_app_install' %}"
+              data-redirect="{% if next %}{{ next }}{% else %}{% url 'appmanage:list' %}{% endif %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="zip_file">选择应用包 (.zip)</label>
+                <div class="custom-file">
+                    <input type="file" class="custom-file-input" id="zip_file" name="zip_file" accept=".zip">
+                    <label class="custom-file-label" for="zip_file">请选择文件</label>
+                </div>
+                <small class="form-text text-muted">
+                    文件格式: appname-version.zip，例如 myapp-1.0.0.zip
+                </small>
+            </div>
+        </form>
+    </div>
+    <div class="card-footer">
+        <button type="submit" class="btn btn-primary" id="btn-embed-install"><i class="fas fa-upload"></i> 安装</button>
+        <button type="button" class="btn btn-default float-right" id="btn-embed-cancel">取消</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$('.custom-file-input').on('change', function() {
+    var fileName = $(this).val().split('\\').pop();
+    $(this).next('.custom-file-label').html(fileName);
+});
+
+$('#btn-embed-cancel').on('click', function() {
+    if (parent && parent.layui && parent.layui.layer) {
+        parent.layui.layer.closeAll('iframe');
+    }
+});
+
+function bindEmbedInstallForm($form) {
+    $form.on('submit', function(e) {
+        e.preventDefault();
+        if ($form.data('submitting')) return;
+        $form.data('submitting', true);
+
+        var url = $form.data('url');
+        var formData = new FormData(this);
+
+        layui.use('layer', function() {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+
+            $.ajax({
+                url: url,
+                type: 'POST',
+                data: formData,
+                dataType: 'json',
+                processData: false,
+                contentType: false
+            }).done(function(res) {
+                layer.close(loadIdx);
+                $form.data('submitting', false);
+                if (res && res.task_id) {
+                    JieTaskLog.open({
+                        title: '安装应用',
+                        taskId: res.task_id,
+                        onSuccess: function () {
+                            if (parent && parent.layui && parent.layui.layer) {
+                                parent.layui.layer.closeAll('iframe');
+                            }
+                            {% if next %}parent.location.href = '{{ next }}';{% endif %}
+                        }
+                    });
+                } else {
+                    layer.msg((res && res.message) || '安装失败', {icon: 2, time: 4000});
+                }
+            }).fail(function() {
+                layer.close(loadIdx);
+                $form.data('submitting', false);
+                layer.msg('请求失败，请检查网络后重试', {icon: 2, time: 4000});
+            });
+        });
+    });
+}
+
+bindEmbedInstallForm($('#install-zip-form'));
+</script>
+{% endblock %}

@@ -1,0 +1,261 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2">
+            <i class="fa fa-user"></i> {{ conn_info.user }}@{{ conn_info.host }}:{{ conn_info.port }}
+        </span>
+        <span class="badge badge-success py-2"><i class="fa fa-key"></i> {{ user }}@{{ host }}</span>
+    </div>
+    <div class="card-tools">
+        <a href="{% url 'dbmysql:databases' conn_id %}" class="btn btn-outline-secondary btn-sm"><i class="fa fa-arrow-left"></i> 用户列表</a>
+        <a href="javascript:;" id="btn-logout" class="btn btn-outline-danger btn-sm"><i class="fa fa-sign-out-alt"></i> 退出连接</a>
+    </div>
+</div>
+
+{% if db_error %}
+<div class="alert alert-danger">操作异常：{{ db_error }}</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title"><i class="fa fa-list"></i> 已授予权限</h3></div>
+            <div class="card-body p-0">
+                <table class="table table-striped table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:40%">权限</th>
+                            <th style="width:18%">作用范围</th>
+                            <th style="width:12%">类型</th>
+                            <th style="width:10%">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+{% for g in grants %}
+                        <tr>
+                            <td>
+{% if g.priv_str == 'ALL PRIVILEGES' %}
+                                <span class="badge badge-danger">ALL PRIVILEGES</span>
+{% elif g.priv_str == 'USAGE' %}
+                                <span class="badge badge-secondary">USAGE</span>
+{% else %}
+                                <span class="text-primary"><code>{{ g.priv_str }}</code></span>
+{% endif %}
+                            </td>
+                            <td>
+{% if g.db == '*' and g.table == '*' %}
+                                <span class="text-muted">全局 <code>*.*</code></span>
+{% elif g.table == '*' %}
+                                <code>{{ g.db }}.*</code>
+{% else %}
+                                <code>{{ g.db }}.{{ g.table }}</code>
+{% endif %}
+                            </td>
+                            <td>
+{% if g.scope == 'global' %}
+                                <span class="badge badge-warning">全局</span>
+{% elif g.scope == 'db' %}
+                                <span class="badge badge-info">库级</span>
+{% else %}
+                                <span class="badge badge-dark">表级</span>
+{% endif %}
+                            </td>
+                            <td>
+{% if g.can_revoke %}
+                                <button type="button" class="btn btn-xs btn-danger btn-revoke"
+                                        data-priv="{{ g.priv_str }}" data-db="{{ g.db }}" data-table="{{ g.table }}"
+                                        data-raw="{{ g.raw }}" data-scope="{{ g.scope }}">撤销</button>
+{% else %}
+                                <span class="text-muted small">基础权限</span>
+{% endif %}
+                            </td>
+                        </tr>
+{% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">暂无权限记录</td></tr>
+{% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><h3 class="card-title"><i class="fa fa-plus-circle"></i> 授予新权限</h3></div>
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small">权限集合</label>
+                        <select id="gr-priv" class="form-control form-control-sm">
+                            <option value="SELECT,INSERT,UPDATE,DELETE">基础增删改查</option>
+                            <option value="SELECT">只读 SELECT</option>
+                            <option value="SELECT,INSERT,UPDATE">读写权限（无 DELETE）</option>
+                            <option value="CREATE,ALTER,DROP">DDL 权限（建/改/删）</option>
+                            <option value="ALL PRIVILEGES">全部权限</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">库</label>
+                        <select id="gr-db" class="form-control form-control-sm">
+                            <option value="*">* (全部库)</option>
+                            <option value="__loading">加载中...</option>
+                        </select>
+                        <input id="gr-db-manual" class="form-control form-control-sm mt-1 d-none"
+                               placeholder="手动输入库名" value="">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">表</label>
+                        <select id="gr-table" class="form-control form-control-sm" disabled>
+                            <option value="*">* (全部表)</option>
+                        </select>
+                        <input id="gr-table-manual" class="form-control form-control-sm mt-1 d-none"
+                               placeholder="手动输入表名" value="">
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button id="btn-grant" class="btn btn-success btn-sm"><i class="fa fa-check"></i> 授予</button>
+                    </div>
+                </div>
+                <div class="small text-muted mt-2">
+                    作用范围：<code>*.*</code> = 所有库所有表，<code>mydb.*</code> = mydb 库所有表，<code>mydb.orders</code> = 具体表。系统库已排除。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_USER_GRANTS = '{% url 'dbmysql:api_user_grants' conn_id %}';
+    var API_DB_LIST = '{% url 'dbmysql:api_db_list' conn_id %}';
+    var API_TABLE_LIST_TPL = '/db/dbmysql/conn/{{ conn_id }}/api/db/__DB__/tables/';
+    var SELF_USER = '{{ user }}';
+    var SELF_HOST = '{{ host }}';
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    function getDb() {
+        var $sel = $('#gr-db');
+        if ($sel.val() === '__manual') return $('#gr-db-manual').val().trim() || '*';
+        return $sel.val() || '*';
+    }
+    function getTable() {
+        var $sel = $('#gr-table');
+        if (!$sel.prop('disabled') && $sel.val() === '__manual') return $('#gr-table-manual').val().trim() || '*';
+        if ($sel.prop('disabled')) return '*';
+        return $sel.val() || '*';
+    }
+
+    function loadDbs() {
+        $.get(API_DB_LIST).done(function (res) {
+            if (!res.success) return;
+            var html = '<option value="*">* (全部库)</option>';
+            for (var i = 0; i < res.databases.length; i++) {
+                html += '<option value="' + res.databases[i] + '">' + res.databases[i] + '</option>';
+            }
+            html += '<option value="__manual">✎ 手动输入...</option>';
+            $('#gr-db').html(html).val('*');
+            $('#gr-table').html('<option value="*">* (全部表)</option>').prop('disabled', true);
+        });
+    }
+
+    function loadTables(db) {
+        var $table = $('#gr-table');
+        $table.html('<option value="*">加载中...</option>').prop('disabled', true);
+        if (db === '*') {
+            $table.html('<option value="*">* (全部表)</option>').prop('disabled', true);
+            return;
+        }
+        $.get(API_TABLE_LIST_TPL.replace('__DB__', encodeURIComponent(db))).done(function (res) {
+            if (!res.success) {
+                $table.html('<option value="*">* (全部表)</option>').prop('disabled', false);
+                return;
+            }
+            var html = '<option value="*">* (全部表)</option>';
+            for (var i = 0; i < res.tables.length; i++) {
+                html += '<option value="' + res.tables[i] + '">' + res.tables[i] + '</option>';
+            }
+            html += '<option value="__manual">✎ 手动输入...</option>';
+            $table.html(html).prop('disabled', false);
+        });
+    }
+
+    $('#gr-db').on('change', function () {
+        var v = $(this).val();
+        if (v === '__manual') {
+            $('#gr-db-manual').removeClass('d-none').val('').focus();
+            $('#gr-table').html('<option value="*">* (全部表)</option>').prop('disabled', true);
+            $('#gr-table-manual').addClass('d-none');
+        } else {
+            $('#gr-db-manual').addClass('d-none');
+            loadTables(v);
+        }
+    });
+    $('#gr-table').on('change', function () {
+        if ($(this).val() === '__manual') {
+            $('#gr-table-manual').removeClass('d-none').val('').focus();
+        } else {
+            $('#gr-table-manual').addClass('d-none');
+        }
+    });
+
+    loadDbs();
+
+    $('#btn-logout').on('click', function () {
+        $.post('{% url 'dbmysql:api_logout' %}', {conn_id: '{{ conn_id }}'}).done(function (res) {
+            window.location.href = res.redirect || '{% url 'dbmysql:index' %}';
+        });
+    });
+
+    $('.btn-revoke').on('click', function () {
+        var priv = $(this).data('priv');
+        var db = $(this).data('db');
+        var table = $(this).data('table');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var scopeLabel = (db === '*' && table === '*') ? '全局 (*.*)' : ((table === '*') ? (db + '.*') : (db + '.' + table));
+            layer.confirm('确定撤销 "' + priv + '" 权限（作用范围: ' + scopeLabel + '）？',
+                {icon: 3, title: '撤销权限'}, function (idx) {
+                layer.close(idx);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post(API_USER_GRANTS, {
+                    action: 'revoke',
+                    user: SELF_USER, host: SELF_HOST,
+                    privileges: priv, db: db, table: table
+                }).done(function (r) {
+                    layer.close(loadIdx);
+                    msg(r.message, r.success);
+                    if (r.success) { setTimeout(function () { window.location.reload(); }, 800); }
+                });
+            });
+        });
+    });
+
+    $('#btn-grant').on('click', function () {
+        var privs = $('#gr-priv').val();
+        var d = getDb();
+        var t = getTable();
+        var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.post(API_USER_GRANTS, {
+            action: 'grant',
+            user: SELF_USER, host: SELF_HOST,
+            privileges: privs, db: d, table: t
+        }).done(function (r) {
+            layer.close(loadIdx);
+            msg(r.message, r.success);
+            if (r.success) { setTimeout(function () { window.location.reload(); }, 800); }
+        });
+    });
+});
+</script>
+{% endblock %}

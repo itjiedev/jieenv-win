@@ -1,0 +1,99 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card card-primary card-outline">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fa fa-plug"></i>
+                    {% if instance %}登录实例：{{ instance.name }}{% else %}登录 MySQL{% endif %}
+                </h3>
+            </div>
+            <div class="card-body">
+                {% if instance %}
+                <div class="alert alert-info py-2">
+                    来源：{{ instance.source_display|default:"登记记录" }}
+                    {% if instance.version %}｜版本：{{ instance.version }}{% endif %}
+                    {% if instance.remark %}<br><small>{{ instance.remark }}</small>{% endif %}
+                </div>
+                {% endif %}
+                <form id="login-form">
+                    <input type="hidden" id="login-instance" value="{{ instance.id|default:'' }}">
+                    <input type="hidden" id="login-name" value="{{ instance.name|default:'' }}">
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">主机</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="login-host" value="{{ form_host }}">
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">端口</label>
+                        <div class="col-sm-9">
+                            <input type="number" class="form-control" id="login-port" value="{{ form_port }}">
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">用户名</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" id="login-user" value="{{ form_user }}">
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <label class="col-sm-3 col-form-label">密码</label>
+                        <div class="col-sm-9">
+                            <input type="password" class="form-control" id="login-password" autocomplete="current-password">
+                        </div>
+                    </div>
+                    <div class="form-group row">
+                        <div class="col-sm-9 offset-sm-3">
+                            <button type="button" id="btn-login" class="btn btn-primary">
+                                <i class="fa fa-sign-in-alt"></i> 登录并管理
+                            </button>
+                            <a href="{% url 'dbmysql:index' %}" class="btn btn-default">返回</a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    function doLogin() {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+            $.post('{% url 'dbmysql:api_login' %}', {
+                host: $('#login-host').val(),
+                port: $('#login-port').val(),
+                user: $('#login-user').val(),
+                password: $('#login-password').val(),
+                instance_id: $('#login-instance').val(),
+                name: $('#login-name').val()
+            }).done(function (res) {
+                layer.close(loadIdx);
+                if (res && res.success) {
+                    layer.msg(res.message || '登录成功', {icon: 1, time: 1200});
+                    setTimeout(function () { window.location.href = res.redirect; }, 800);
+                } else {
+                    layer.msg((res && res.message) || '登录失败', {icon: 2, time: 4000});
+                }
+            }).fail(function () {
+                layer.close(loadIdx);
+                layer.msg('请求失败，请检查网络后重试', {icon: 2, time: 4000});
+            });
+        });
+    }
+    $('#btn-login').on('click', doLogin);
+    $('#login-form').on('submit', function (e) { e.preventDefault(); doLogin(); });
+    $('#login-password').on('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
+    });
+});
+</script>
+{% endblock %}

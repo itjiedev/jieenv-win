@@ -1,0 +1,1 @@
+.\runtime\python.exe jieenv\manage.py apprescan --all

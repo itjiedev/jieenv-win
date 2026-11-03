@@ -1,0 +1,635 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2"><i class="fa fa-database"></i> {{ instance.name }}</span>
+        <span class="badge py-2 {% if instance.reachable %}badge-success{% else %}badge-secondary{% endif %}">
+            {% if instance.reachable %}可连接{% else %}未运行/不可达{% endif %}
+        </span>
+        {% if service_state %}
+        <span class="badge py-2 {% if service_state.running %}badge-success{% else %}badge-warning{% endif %}">
+            服务{% if service_state.running %}运行中{% else %}已停止{% endif %}
+        </span>
+        {% endif %}
+    </div>
+    <div class="card-tools">
+{#        <a href="{% url 'dbmysql:index' %}" class="btn btn-default btn-sm"><i class="fa fa-arrow-left"></i> 返回首页</a>#}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-info-circle"></i> 实例信息</h3></div>
+    <div class="card-body p-0">
+        <table class="table table-bordered mb-0 table-sm">
+            <tbody>
+                <tr><th style="width:180px">名称</th><td>{{ instance.name }}</td></tr>
+                <tr><th>地址</th><td><code>{{ instance.host }}:{{ instance.port }}</code></td></tr>
+                <tr><th>版本</th><td>{{ instance.version|default:"-" }}</td></tr>
+                <tr><th>来源</th><td>{{ instance.source_display }}</td></tr>
+                <tr><th>运行模式</th>
+                    <td>
+                        {% if instance.run_mode == 'service' %}Windows 服务
+                        {% elif instance.run_mode == 'process' %}普通进程
+                        {% else %}未知{% endif %}
+                    </td>
+                </tr>
+                <tr><th>服务名</th>
+                    <td>
+                        {% if instance.service_name %}
+                            {{ instance.service_name }}
+                            {% if service_state and not service_state.exists %}
+                                <span class="text-danger">（该服务在系统中不存在，可能已被删除，可重新注册）</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">未注册 Windows 服务</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr><th>安装目录</th><td>{{ instance.install_dir|default:"-" }}</td></tr>
+                <tr><th>数据目录</th><td>{{ instance.data_dir|default:"-" }}</td></tr>
+                <tr><th>默认用户</th><td>{{ instance.default_user|default:"root" }}</td></tr>
+                <tr><th>登记时间</th><td>{{ instance.created_at|default:"-" }}</td></tr>
+                <tr><th>备注</th><td>{{ instance.remark|default:"-" }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card card-primary card-outline">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-cogs"></i> 操作</h3></div>
+    <div class="card-body">
+        {% if matched_conn_id %}
+        <a href="{% url 'dbmysql:databases' matched_conn_id %}" class="btn btn-info btn-sm">
+            <i class="fa fa-tachometer-alt"></i> 管理数据库</a>
+        <button type="button" class="btn btn-outline-danger btn-sm btn-conn-logout" data-id="{{ matched_conn_id }}">
+            <i class="fa fa-sign-out-alt"></i> 退出连接</button>
+        {% elif not instance.reachable %}
+        <button type="button" class="btn btn-primary btn-sm btn-login disabled" data-href="{% url 'dbmysql:login' %}?instance={{ instance.id }}" title="实例未运行，无法登录">
+            <i class="fa fa-plug"></i> 登录（实例未运行）</button>
+        {% else %}
+        <button type="button" class="btn btn-primary btn-sm btn-login" data-href="{% url 'dbmysql:login' %}?instance={{ instance.id }}">
+            <i class="fa fa-plug"></i> 登录管理</button>
+        {% endif %}
+
+        {% if not is_remote %}
+        <a href="{% url 'dbmysql:instance_config' instance.id %}" class="btn btn-outline-info btn-sm"
+           {% if not instance.install_dir %}disabled title="该实例没有登记安装目录"{% endif %}>
+            <i class="fa fa-file-code"></i> 编辑配置文件</a>
+        <button type="button" id="btn-change-port" class="btn btn-outline-info btn-sm">
+            <i class="fa fa-exchange-alt"></i> 修改端口</button>
+        {% endif %}
+
+        <button type="button" id="btn-rename" class="btn btn-outline-info btn-sm">
+            <i class="fa fa-edit"></i> 修改名称</button>
+
+        {% if not is_remote %}
+        <button type="button" id="btn-open-install" class="btn btn-outline-secondary btn-sm"
+                {% if not instance.install_dir %}disabled title="该实例没有登记安装目录"{% endif %}>
+            <i class="fa fa-folder-open"></i> 打开安装目录</button>
+        <button type="button" id="btn-open-data" class="btn btn-outline-secondary btn-sm"
+                {% if not instance.data_dir %}disabled title="该实例没有登记数据目录"{% endif %}>
+            <i class="fa fa-folder-open"></i> 打开数据目录</button>
+        <hr>
+        {% endif %}
+
+        {% if not is_remote %}
+        {% if service_state and service_state.exists %}
+        <div class="alert alert-sm {% if service_state.running %}alert-success{% else %}alert-secondary{% endif %} py-2 px-3 mb-2 d-flex align-items-center" style="font-size:13px">
+            <i class="fa {% if service_state.running %}fa-play-circle text-success{% else %}fa-stop-circle text-muted{% endif %} mr-2" style="font-size:16px"></i>
+            <span>当前服务状态：<b>{% if service_state.running %}运行中{% else %}已停止{% endif %}</b></span>
+            {% if service_state.running %}
+            <span class="text-muted ml-2">（端口 {{ instance.port }}{% if instance.reachable %} 可连接{% else %} 端口不可达{% endif %}）</span>
+            {% endif %}
+        </div>
+        <button type="button" id="btn-start" class="btn btn-outline-success btn-sm"
+                {% if service_state.running %}disabled{% endif %}>
+            <i class="fa fa-play"></i> 启动服务</button>
+        <button type="button" id="btn-stop" class="btn btn-outline-danger btn-sm"
+                {% if not service_state.running %}disabled{% endif %}>
+            <i class="fa fa-stop"></i> 停止服务</button>
+        <button type="button" id="btn-restart" class="btn btn-outline-info btn-sm"
+                {% if not service_state.running %}disabled title="服务未运行，无法重启"{% endif %}>
+            <i class="fa fa-redo"></i> 重启服务</button>
+        <button type="button" id="btn-remove-service" class="btn btn-outline-danger btn-sm">
+            <i class="fa fa-minus-circle"></i> 删除服务</button>
+        <span class="text-muted">以 Windows 服务 <b>{{ instance.service_name }}</b> 方式启停</span>
+        <hr>
+        <div class="startup-type-section">
+            <span class="text-muted" style="font-size:13px">服务启动类型：</span>
+            {% if start_type_info and start_type_info.exists %}
+                {% with st=start_type_info.start_type %}
+                <b id="current-start-type-label">
+                    {% if st == 'auto' %}开机自启
+                    {% elif st == 'delayed-auto' %}延迟自动
+                    {% elif st == 'demand' %}手动启动
+                    {% elif st == 'disabled' %}禁用
+                    {% elif st == 'boot' %}引导启动（驱动）
+                    {% elif st == 'system' %}系统启动（驱动）
+                    {% else %}未知 ({{ st }})
+                    {% endif %}
+                </b>
+                {% endwith %}
+                <select id="startup-type-select" class="form-control form-control-sm d-inline-block"
+                        style="width:auto; margin-left:8px">
+                    <option value="auto">开机自启</option>
+                    <option value="delayed-auto">延迟自动</option>
+                    <option value="demand">手动启动</option>
+                    <option value="disabled">禁用</option>
+                </select>
+                <button type="button" id="btn-set-startup-type"
+                        class="btn btn-outline-primary btn-sm">
+                    <i class="fa fa-cog"></i> 应用
+                </button>
+                <span class="text-muted" style="font-size:12px">
+                    修改开机启动行为（需管理员权限，自动申请 UAC）
+                </span>
+            {% elif start_type_info and not start_type_info.exists %}
+                <span class="text-danger">服务不存在，可能已被删除，可重新注册</span>
+            {% else %}
+                <span class="text-muted">查询失败</span>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="alert alert-secondary py-2 px-3 mb-2" style="font-size:13px">
+            <i class="fa fa-info-circle mr-1"></i>
+            当前服务状态：<b>未注册 Windows 服务</b>
+            {% if instance.reachable %}
+            <span class="text-muted ml-2">（端口 {{ instance.port }} 可连接，进程方式运行中）</span>
+            {% else %}
+            <span class="text-muted ml-2">（端口 {{ instance.port }} 未运行）</span>
+            {% endif %}
+        </div>
+        {% if instance.install_dir %}
+        <button type="button" id="btn-process-start" class="btn btn-outline-success btn-sm"
+                {% if instance.reachable %}disabled{% endif %}>
+            <i class="fa fa-play"></i> 启动（进程模式）</button>
+        <button type="button" id="btn-process-stop" class="btn btn-outline-danger btn-sm"
+                {% if not instance.reachable %}disabled{% endif %}>
+            <i class="fa fa-stop"></i> 停止（进程模式）</button>
+        <button type="button" id="btn-process-restart" class="btn btn-outline-info btn-sm"
+                {% if not instance.reachable %}disabled title="实例未运行，无法重启"{% endif %}>
+            <i class="fa fa-redo"></i> 重启（进程模式）</button>
+        <span class="text-muted">以进程方式直接管理 mysqld（无需注册服务）</span>
+        {% endif %}
+        <button type="button" id="btn-register-service" class="btn btn-success btn-sm"
+                {% if not instance.install_dir %}disabled title="该实例没有登记安装目录，无法注册服务"{% endif %}>
+            <i class="fa fa-plus-circle"></i> 注册为 Windows 服务</button>
+        {% if not instance.install_dir %}
+        <span class="text-muted">该实例没有登记安装目录，无法注册服务</span>
+        {% else %}
+        <span class="text-muted">注册后可通过服务方式启动/停止（注册需要管理员权限）</span>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+        {% if not is_remote %}
+        <hr>
+        {% if instance.install_dir %}
+        <button type="button" id="btn-uninstall" class="btn btn-danger btn-sm">
+            <i class="fa fa-trash"></i> 卸载 MySQL</button>
+        <span class="text-muted">将停止服务、删除注册、删除安装目录并移除记录</span>
+        {% endif %}
+        {% endif %}
+        <hr>
+        <button type="button" id="btn-remove" class="btn btn-outline-danger btn-sm">
+            <i class="fa fa-trash"></i> 移除记录</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var INSTANCE_ID = '{{ instance.id }}';
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    $('.btn-login.disabled').on('click', function (e) {
+        e.preventDefault();
+        return false;
+    });
+
+    $('.btn-login:not(.disabled)').on('click', function () {
+        window.location.href = $(this).data('href');
+    });
+
+    $('.btn-conn-logout').on('click', function () {
+        var id = $(this).data('id');
+        layui.use('layer', function () {
+            layui.layer.confirm('确定退出连接？', {icon: 3, title: '退出连接'}, function (idx) {
+                layui.layer.close(idx);
+                var loadIdx = layui.layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post('{% url 'dbmysql:api_logout' %}', {conn_id: id}).done(function (res) {
+                    layui.layer.close(loadIdx);
+                    msg(res.message || '已退出连接', true);
+                    setTimeout(function () { window.location.reload(); }, 600);
+                });
+            });
+        });
+    });
+
+    function reload(delay) {
+        setTimeout(function () { window.location.reload(); }, delay || 1500);
+    }
+
+    // 通知后端清理该实例在本会话中的登录连接（服务停止/重启/卸载后调用）。
+    // 后端 api_instance_conn_clear 会把 session 中该实例的 conn_id 一并移除，
+    // 避免出现“服务已停却仍显示登录中”的状态。
+    function clearConn(instanceId, cb) {
+        $.post('{% url "dbmysql:api_instance_conn_clear" %}', {id: instanceId})
+            .always(function () { if (cb) cb(); });
+    }
+
+    function openDir(kind) {
+        $.post('{% url 'dbmysql:api_instance_open_dir' %}', {id: INSTANCE_ID, kind: kind}).done(function (res) {
+            if (!res.success) { msg(res.message, false); }
+        }).fail(function () { msg('请求失败', false); });
+    }
+
+    $('#btn-open-install').on('click', function () { openDir('install'); });
+    $('#btn-open-data').on('click', function () { openDir('data'); });
+
+    // ── 修改端口 ─────────────────────────────────────────
+    $('#btn-change-port').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.open({
+                title: '修改端口',
+                content: '<div style="padding:15px 10px">'
+                    + '<p>当前端口：<b>{{ instance.port }}</b></p>'
+                    + '<div class="form-group">'
+                    + '<label>新端口：</label>'
+                    + '<input type="number" class="form-control" id="new-port-input" '
+                    + 'value="{{ instance.port }}" min="1" max="65535" style="width:140px">'
+                    + '<div id="port-check-msg" class="mt-1" style="font-size:12px"></div>'
+                    + '</div>'
+                    + '<p class="text-muted" style="font-size:12px">修改后需重启 MySQL 服务才能生效</p>'
+                    + '</div>',
+                btn: ['确定修改', '取消'],
+                yes: function (index) {
+                    var newPort = $('#new-port-input').val().trim();
+                    if (!newPort || isNaN(newPort)) {
+                        layer.msg('请输入有效端口号', {icon: 2});
+                        return;
+                    }
+                    layer.close(index);
+                    var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                    $.post('{% url "dbmysql:api_instance_change_port" %}',
+                        {id: INSTANCE_ID, port: newPort}
+                    ).done(function (res) {
+            layer.close(loadIdx);
+
+                        layui.layer.msg(res.message, {icon: res.success ? 1 : 2, time: 4000});
+                        if (res.success) { reload(1500); }
+                    }).fail(function () {
+                        layer.msg('请求失败', {icon: 2});
+                    });
+                }
+            });
+            // 实时检测端口占用
+            var checkTimer = null;
+            $('#new-port-input').on('input', function () {
+                clearTimeout(checkTimer);
+                var val = $(this).val().trim();
+                if (!val) { $('#port-check-msg').text(''); return; }
+                checkTimer = setTimeout(function () {
+                    $.get('{% url "dbmysql:api_port_check" %}',
+                        {port: val, exclude: INSTANCE_ID}
+                    ).done(function (res) {
+                        if (res.available) {
+                            $('#port-check-msg').html('<span class="text-success"><i class="fa fa-check"></i> 端口可用</span>');
+                        } else {
+                            $('#port-check-msg').html(
+                                '<span class="text-danger"><i class="fa fa-exclamation-circle"></i> ' + res.message + '</span>'
+                                + (res.suggested ? ' &nbsp;<a href="javascript:;" id="btn-use-suggested" data-port="' + res.suggested + '"><span class="text-primary">使用建议端口 ' + res.suggested + '</span></a>' : '')
+                            );
+                            $('#btn-use-suggested').on('click', function () {
+                                var sp = $(this).data('port');
+                                $('#new-port-input').val(sp).trigger('input');
+                            });
+                        }
+                    });
+                }, 400);
+            });
+        });
+    });
+
+    // ── 修改名称 ─────────────────────────────────────────
+    $('#btn-rename').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.open({
+                title: '修改名称',
+                content: '<div style="padding:15px 10px">'
+                    + '<p>当前名称：<b>{{ instance.name|escapejs }}</b></p>'
+                    + '<div class="form-group">'
+                    + '<label>新名称：</label>'
+                    + '<input type="text" class="form-control" id="new-name-input" '
+                    + 'value="{{ instance.name|escapejs }}" maxlength="50" style="width:240px">'
+                    + '</div>'
+                    + '<p class="text-muted" style="font-size:12px">仅修改显示名称，不影响服务名、端口、连接等运行时配置</p>'
+                    + '</div>',
+                btn: ['确定修改', '取消'],
+                yes: function (index) {
+                    var newName = $('#new-name-input').val().trim();
+                    if (!newName) {
+                        layer.msg('名称不能为空', {icon: 2});
+                        return;
+                    }
+                    layer.close(index);
+                    var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                    $.post('{% url "dbmysql:api_instance_rename" %}',
+                        {id: INSTANCE_ID, name: newName}
+                    ).done(function (res) {
+            layer.close(loadIdx);
+
+                        layui.layer.msg(res.message, {icon: res.success ? 1 : 2, time: 4000});
+                        if (res.success) { reload(1500); }
+                    }).fail(function () {
+                        layer.msg('请求失败', {icon: 2});
+                    });
+                }
+            });
+        });
+    });
+
+    // ── 服务启停：任务式执行 + 黑底白字逐步提示 ────────────
+    function serviceTask(action) {
+        var verbMap = {start: '启动', stop: '停止', restart: '重启'};
+        var verb = verbMap[action] || action;
+        $.post('{% url "dbmysql:index" %}api/instance/service/' + action + '/',
+            {id: INSTANCE_ID}
+        ).done(function (res) {
+            if (!res || !res.success) {
+                layui.use('layer', function () {
+                    layui.layer.msg((res && res.message) || '发起' + verb + '任务失败', {icon: 2, time: 4000});
+                });
+                return;
+            }
+            // 停止/重启后实例的连接已失效，任务成功后主动清理会话连接
+            var staleConn = (action === 'stop' || action === 'restart');
+            JieTaskLog.open({
+                title: verb + '服务',
+                taskUrl: '{% url "dbmysql:index" %}api/task/status/' + res.task_id + '/',
+                onSuccess: function () {
+                    if (staleConn) {
+                        clearConn(res.instance_id || INSTANCE_ID, function () {
+                            reload(300);
+                        });
+                    } else {
+                        reload(300);
+                    }
+                }
+            });
+        }).fail(function () {
+            layui.use('layer', function () {
+                layui.layer.msg(verb + '请求失败', {icon: 2, time: 4000});
+            });
+        });
+    }
+
+    // ── 进程模式启停：任务式执行 + 风险确认 ────────────────
+    function processTask(action) {
+        var verbMap = {start: '启动', stop: '停止', restart: '重启'};
+        var verb = verbMap[action] || action;
+        $.post('{% url "dbmysql:index" %}api/instance/process/' + action + '/',
+            {id: INSTANCE_ID}
+        ).done(function (res) {
+            if (!res || !res.success) {
+                layui.use('layer', function () {
+                    layui.layer.msg((res && res.message) || '发起' + verb + '任务失败', {icon: 2, time: 4000});
+                });
+                return;
+            }
+            JieTaskLog.open({
+                title: verb + '（进程模式）',
+                taskUrl: '{% url "dbmysql:index" %}api/task/status/' + res.task_id + '/',
+                onSuccess: function () {
+                    if (action === 'stop' || action === 'restart') {
+                        clearConn(res.instance_id || INSTANCE_ID, function () {
+                            reload(300);
+                        });
+                    } else {
+                        reload(300);
+                    }
+                }
+            });
+        }).fail(function () {
+            layui.use('layer', function () {
+                layui.layer.msg(verb + '请求失败', {icon: 2, time: 4000});
+            });
+        });
+    }
+
+    // ── 服务启动类型切换：同步执行 + 即时刷新 ──────────────
+    function setStartupType() {
+        var newType = $('#startup-type-select').val();
+        if (!newType) return;
+        var typeLabels = {
+            'auto': '开机自启', 'delayed-auto': '延迟自动',
+            'demand': '手动启动', 'disabled': '禁用'
+        };
+        var label = typeLabels[newType] || newType;
+        layui.use('layer', function () {
+            layui.layer.confirm(
+                '确定将服务启动类型设为「' + label + '」吗？',
+                {icon: 3, title: '切换启动类型'},
+                function (index) {
+                    layui.layer.close(index);
+                    var $btn = $('#btn-set-startup-type').prop('disabled', true);
+                    var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                    $.post('{% url "dbmysql:api_instance_set_startup_type" %}',
+                        {instance_id: INSTANCE_ID, start_type: newType}
+                    ).done(function (res) {
+            layer.close(loadIdx);
+
+                        if (res && res.success) {
+                            layui.layer.msg(res.message || '切换成功', {icon: 1, time: 2000});
+                            reload(300);
+                        } else {
+                            layui.layer.msg((res && res.message) || '切换失败', {icon: 2, time: 4000});
+                        }
+                    }).fail(function () {
+                        layui.layer.msg('切换请求失败', {icon: 2, time: 4000});
+                    }).always(function () {
+                        $btn.prop('disabled', false);
+                    });
+                }
+            );
+        });
+    }
+
+    $('#btn-process-start').on('click', function () { processTask('start'); });
+
+    $('#btn-process-stop').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定以进程方式终止 MySQL 吗？强制终止可能中断未完成事务，请确认无业务在用。',
+                {icon: 3, title: '停止 MySQL（进程模式）'}, function (index) {
+                layer.close(index);
+                processTask('stop');
+            });
+        });
+    });
+
+    $('#btn-process-restart').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定重启 MySQL 吗？将以进程方式终止并重新启动，期间服务短暂不可用。',
+                {icon: 3, title: '重启 MySQL（进程模式）'}, function (index) {
+                layer.close(index);
+                processTask('restart');
+            });
+        });
+    });
+
+    $('#btn-start').on('click', function () { serviceTask('start'); });
+
+    $('#btn-stop').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定停止该 MySQL 服务吗？请确认没有业务正在使用。',
+                {icon: 3, title: '停止服务'}, function (index) {
+                layer.close(index);
+                serviceTask('stop');
+            });
+        });
+    });
+
+    $('#btn-restart').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定重启该 MySQL 服务吗？重启期间服务将短暂不可用。',
+                {icon: 3, title: '重启服务'}, function (index) {
+                layer.close(index);
+                serviceTask('restart');
+            });
+        });
+    });
+
+    // 初始化启动类型下拉框选中当前值
+    {% if start_type_info and start_type_info.exists %}
+    $('#startup-type-select').val('{{ start_type_info.start_type }}');
+    {% endif %}
+    $('#btn-set-startup-type').on('click', setStartupType);
+
+    $('#btn-register-service').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.prompt({
+                title: '输入 Windows 服务名（字母开头，仅含字母/数字/下划线/中划线）',
+                value: '{{ default_service_name }}',
+                formType: 0
+            }, function (value, index) {
+                layer.close(index);
+                $.post('{% url 'dbmysql:api_instance_register_service_task' %}',
+                    {id: INSTANCE_ID, service_name: value}).done(function (res) {
+                    if (!res || !res.success) {
+                        layui.layer.msg((res && res.message) || '发起注册任务失败', {icon: 2, time: 4000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '注册 Windows 服务',
+                        taskUrl: '{% url "dbmysql:index" %}api/task/status/' + res.task_id + '/',
+                        onSuccess: function () { reload(300); }
+                    });
+                }).fail(function () {
+                    layui.layer.msg('注册请求失败', {icon: 2, time: 4000});
+                });
+            });
+        });
+    });
+
+    // ── 删除服务：任务式执行 ──────────────────────────────
+    $('#btn-remove-service').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定删除该 Windows 服务吗？删除后实例将切换为进程模式。',
+                {icon: 3, title: '删除服务'}, function (index) {
+                layer.close(index);
+                $.post('{% url "dbmysql:api_instance_remove_service" %}',
+                    {id: INSTANCE_ID}
+                ).done(function (res) {
+                    if (!res || !res.success) {
+                        layui.layer.msg((res && res.message) || '发起删除任务失败', {icon: 2, time: 4000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '删除 Windows 服务',
+                        taskUrl: '{% url "dbmysql:index" %}api/task/status/' + res.task_id + '/',
+                        onSuccess: function () { reload(300); }
+                    });
+                }).fail(function () {
+                    layui.layer.msg('删除请求失败', {icon: 2, time: 4000});
+                });
+            });
+        });
+    });
+
+    // ── 卸载 MySQL：任务式执行 ──────────────────────────────
+    $('#btn-uninstall').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.open({
+                title: '卸载 MySQL',
+                content: '<div style="padding:10px 0">'
+                    + '<p style="color:#f56c6c;font-weight:bold">'
+                    + '<i class="fa fa-exclamation-triangle"></i> '
+                    + '此操作将停止服务、删除 Windows 服务注册、删除安装目录并移除实例记录！</p>'
+                    + '<p><label><input type="checkbox" id="uninstall-keep-data" checked> 保留数据目录（data 子目录）</label></p>'
+                    + '</div>',
+                btn: ['确定卸载', '取消'],
+                yes: function (index) {
+                    layer.close(index);
+                    var keepData = $('#uninstall-keep-data').is(':checked') ? '1' : '0';
+                    $.post('{% url "dbmysql:api_instance_uninstall" %}',
+                        {id: INSTANCE_ID, keep_data: keepData}
+                    ).done(function (res) {
+                        if (!res || !res.success) {
+                            layui.layer.msg((res && res.message) || '发起卸载任务失败', {icon: 2, time: 4000});
+                            return;
+                        }
+                        JieTaskLog.open({
+                            title: '卸载 MySQL',
+                            taskUrl: '{% url "dbmysql:index" %}api/task/status/' + res.task_id + '/',
+                            onSuccess: function () {
+                                // 卸载成功，清理该实例的会话连接后再回首页
+                                clearConn(res.instance_id || INSTANCE_ID, function () {
+                                    window.location.href = '{% url "dbmysql:index" %}';
+                                });
+                            }
+                        });
+                    }).fail(function () {
+                        layui.layer.msg('卸载请求失败', {icon: 2, time: 4000});
+                    });
+                }
+            });
+        });
+    });
+
+    $('#btn-remove').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('仅移除登记记录，不会卸载或删除 MySQL 数据，确定吗？',
+                {icon: 3, title: '移除记录'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post('{% url 'dbmysql:api_instance_remove' %}', {id: INSTANCE_ID}).done(function (res) {
+            layer.close(loadIdx);
+
+                    msg(res.message, res.success);
+                    if (res.success) {
+                        setTimeout(function () { window.location.href = '{% url 'dbmysql:index' %}'; }, 800);
+                    }
+                });
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

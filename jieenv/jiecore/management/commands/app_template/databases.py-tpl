@@ -1,0 +1,51 @@
+"""
+{{ app_name }} 私有数据库连接配置
+
+应用私有数据库连接完全定义在此文件中，不需要在项目 settings 里写任何配置。
+在 apps.py 的 ready() 中调用 register_private_databases() 注册后，
+模型继承 PrivateDBModel 并声明 PRIVATE_DB_ALIAS 即可自动路由到对应私有库。
+
+使用步骤：
+    1. 在 PRIVATE_DATABASES 中定义私有连接（可定义多个）
+    2. 在 apps.py 的 ready() 中取消注释注册代码
+    3. 模型继承 PrivateDBModel 并声明 PRIVATE_DB_ALIAS
+    4. 执行迁移：python manage.py migrate {{ app_name }} --database=<别名>
+
+支持数据库类型（需自行安装对应驱动）：
+    - SQLite（Django 内置，无需额外安装）
+    - MySQL（pip install mysqlclient）
+    - PostgreSQL（pip install psycopg[binary]）
+    - Oracle（pip install oracledb）
+    - SQL Server（pip install mssql-django）
+"""
+import os
+
+from django.conf import settings
+
+# ── 私有数据库连接定义 ────────────────────────────────────
+# 键为连接别名（建议带应用前缀避免冲突），值为标准 Django DATABASES 配置
+
+# 示例：SQLite 私有库
+# {{ app_name | upper }}_DB01_ALIAS = '{{ app_name }}_db01'
+#
+# PRIVATE_DATABASES = {
+#     {{ app_name | upper }}_DB01_ALIAS: {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': os.path.join(settings.DATA_DIR, '{{ app_name }}', 'db01.sqlite3'),
+#     },
+# }
+
+# 示例：MySQL 私有库
+# PRIVATE_DATABASES = {
+#     {{ app_name | upper }}_DB01_ALIAS: {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': '{{ app_name }}_db01',
+#         'USER': 'root',
+#         'PASSWORD': '',
+#         'HOST': '127.0.0.1',
+#         'PORT': '3306',
+#         'OPTIONS': {'charset': 'utf8mb4'},
+#     },
+# }
+
+PRIVATE_DATABASES = {}
