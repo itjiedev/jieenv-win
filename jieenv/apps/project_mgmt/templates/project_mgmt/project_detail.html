@@ -1,0 +1,399 @@
+{% extends "layout_main.html" %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block page_content %}
+{% if not project_found %}
+<div class="alert alert-warning">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    项目不存在或已被删除。
+    <a href="{% url 'project_mgmt:index' %}">返回列表</a>
+</div>
+{% else %}
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fa-solid fa-folder-open"></i>
+            {{ project.name }}
+            <span id="overall-badge" class="badge {{ overall_class }} ml-2">{{ overall_label }}</span>
+            {% if template_label %}
+            <span class="badge badge-info ml-1" title="模板">{{ template_label }}</span>
+            {% endif %}
+        </h3>
+        <div class="card-tools">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-open-dir" data-path="{{ project_dir }}">
+                <i class="fa-solid fa-folder"></i> 打开目录
+            </button>
+            <button type="button" class="btn btn-info btn-sm ml-1" id="btn-open-terminal" data-project-id="{{ project.id }}">
+                <i class="fa-solid fa-terminal"></i> 打开终端
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm ml-1" id="btn-recheck-health" data-project-id="{{ project.id }}">
+                <i class="fa-solid fa-rotate"></i> 重测健康
+            </button>
+            <a href="{% url 'project_mgmt:delete_confirm' project_id=project.id %}" class="btn btn-outline-danger btn-sm ml-1">
+                <i class="fa-solid fa-trash"></i> 删除
+            </a>
+            <a href="{% url 'project_mgmt:index' %}" class="btn btn-outline-secondary btn-sm ml-1">
+                <i class="fa-solid fa-arrow-left"></i> 返回列表
+            </a>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+            <tr>
+                <th style="width:100px">项目名称</th>
+                <td>{{ project.name }}</td>
+            </tr>
+            <tr>
+                <th>项目路径</th>
+                <td class="text-monospace small" title="{{ project_dir }}">
+                    {{ project_dir|default:"-" }}
+                    {% if project_dir %}
+                    <button type="button" class="btn btn-link btn-xs text-muted ml-1 p-0" id="btn-copy-dir" data-path="{{ project_dir }}" title="复制路径">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>创建时间</th>
+                <td>{{ project.created_at }}</td>
+            </tr>
+            <tr>
+                <th>初始模板</th>
+                <td>
+                    {% if template_label %}
+                        {{ template_label }}
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">
+            <i class="fa-solid fa-diagram-project"></i>
+            组件清单
+            <span class="badge badge-secondary ml-1">{{ provider_bindings|length }} 个组件</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+
+        {% if provider_bindings %}
+        <div class="px-3 pt-2 pb-1 text-muted small font-weight-bold border-bottom">
+            <i class="fa-solid fa-puzzle-piece"></i> Provider 组件
+        </div>
+        <table class="table table-sm table-hover mb-0">
+            <thead class="thead-light">
+                <tr>
+                    <th>名称</th>
+                    <th>配置摘要</th>
+                    <th style="width:90px">健康状态</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for g in grouped_bindings %}
+                <tr class="bg-light">
+                    <td colspan="3" class="py-2 font-weight-bold text-info border-top border-bottom">
+                        <i class="{{ g.icon }}"></i>
+                        {{ g.label }}
+                        <span class="badge badge-info ml-1">{{ g.bindings|length }}</span>
+                    </td>
+                </tr>
+                {% for b in g.bindings %}
+                <tr data-provider-key="{{ b.provider_key }}" data-binding-type="{{ b.binding_type }}">
+                    <td class="td-name">
+                        <div><b>{{ b.label }}</b></div>
+                        {% if b.depends_on %}
+                        <div class="text-muted small">依赖: {{ b.depends_on|join:", " }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="td-summary small">
+                        {% if b.summary %}
+                        {% for item in b.summary %}
+                        <div><span class="text-muted font-weight-bold">{{ item.label }}:</span> <span class="text-monospace small">{{ item.value }}</span></div>
+                        {% endfor %}
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="td-health">
+                        {% if b.state %}
+                        <span class="badge {{ b.state_class }}">{{ b.state_label }}</span>
+                        {% else %}
+                        <span class="badge badge-secondary">探测中...</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
+        {% if not provider_bindings %}
+        <div class="alert alert-info mb-0">
+            <i class="fa-solid fa-circle-info"></i> 无组件绑定信息。
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">
+            <i class="fa-solid fa-folder-tree"></i>
+            目录快速预览
+        </div>
+        {% if dir_entries %}
+        <div class="card-tools">
+            <span class="text-muted small">显示前 {{ dir_entries|length }} 项</span>
+        </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if dir_entries %}
+        <ul class="list-group list-group-flush mb-0">
+            {% for entry in dir_entries %}
+            <li class="list-group-item py-1 px-3 d-flex align-items-center border-0">
+                {% if entry.is_dir %}
+                <i class="fa-solid fa-folder text-info mr-2"></i>
+                {% else %}
+                <i class="fa-solid fa-file text-muted mr-2"></i>
+                {% endif %}
+                <span class="text-monospace small">{{ entry.name }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% elif project_dir %}
+        <div class="text-muted p-3">目录不存在或无法读取</div>
+        {% else %}
+        <div class="text-muted p-3">项目无路径</div>
+        {% endif %}
+    </div>
+</div>
+
+
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+<script>
+$('#btn-copy-dir').on('click', function() {
+    var path = $(this).data('path');
+    if (!path) return;
+    var $icon = $(this).find('i');
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(path).then(function() {
+            $icon.removeClass('fa-regular fa-copy').addClass('fa-solid fa-check text-success');
+            setTimeout(function() { $icon.removeClass('fa-solid fa-check text-success').addClass('fa-regular fa-copy'); }, 1200);
+        });
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = path; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+        $icon.removeClass('fa-regular fa-copy').addClass('fa-solid fa-check text-success');
+        setTimeout(function() { $icon.removeClass('fa-solid fa-check text-success').addClass('fa-regular fa-copy'); }, 1200);
+    }
+});
+
+$('#btn-open-dir').on('click', function() {
+    var path = $(this).data('path');
+    if (!path) return;
+    $.post('{% url "project_mgmt:api_open_dir" %}', {path: path}, function(resp) {
+        if (!resp.ok) alert(resp.error || '打开失败');
+    }).fail(function() { alert('请求失败'); });
+});
+
+$('#btn-open-terminal').on('click', function() {
+    var pid = $(this).data('project-id');
+    if (!pid) return;
+    $.post('{% url "project_mgmt:api_open_terminal" %}', {project_id: pid}, function(resp) {
+        if (!resp.ok) alert(resp.error || '打开终端失败');
+    }).fail(function() { alert('请求失败'); });
+});
+
+var HEALTH_STYLE = {
+    OK:       { cls: 'badge-success',  text: '正常' },
+    DEGRADED: { cls: 'badge-warning',  text: '异常' },
+    MISSING:  { cls: 'badge-danger',   text: '缺失组件' },
+    DISABLED: { cls: 'badge-warning',  text: '异常' },
+};
+
+var API_APP_ACTION = '{% url "jiecore:api_app_action" app_name="__APP__" action="enable" %}';
+
+function bindEnableButtons() {
+    $('.btn-enable-app').off('click').on('click', function() {
+        var btn = $(this);
+        var appName = btn.data('app-name');
+        if (!appName) return;
+        layui.layer.confirm(
+            '确认启用扩展应用「' + appName + '」吗？启用后将自动恢复该组件。',
+            { icon: 3, title: '启用确认' },
+            function(idx) {
+                layui.layer.close(idx);
+                var loadIdx = layui.layer.load(2, { shade: [0.3, '#000'] });
+                $.ajax({
+                    url: API_APP_ACTION.replace('__APP__', appName),
+                    type: 'POST',
+                    dataType: 'json',
+                    success: function(resp) {
+                        layui.layer.close(loadIdx);
+                        if (resp && resp.success) {
+                            layui.layer.msg(resp.message || '启用成功', { icon: 1, time: 1500 });
+                            setTimeout(detectProjectHealth, 600);
+                        } else {
+                            layui.layer.msg((resp && resp.message) || '启用失败', { icon: 2, time: 2500 });
+                        }
+                    },
+                    error: function() {
+                        layui.layer.close(loadIdx);
+                        layui.layer.msg('请求失败，请稍后重试', { icon: 2, time: 2500 });
+                    }
+                });
+            }
+        );
+    });
+}
+
+var API_PROVIDER_CAP_BASE = '{% url "project_mgmt:api_provider_capability" provider_key="__PK__" capability="__CAP__" %}';
+
+function invokeProviderAction(providerKey, action, config, onDone) {
+    var url = API_PROVIDER_CAP_BASE.replace('__PK__', providerKey).replace('__CAP__', action);
+    var loadIdx = layui.layer.load(2, { shade: [0.3, '#000'] });
+    $.ajax({
+        url: url,
+        type: 'POST',
+        data: config || {},
+        dataType: 'json',
+        success: function(resp) {
+            layui.layer.close(loadIdx);
+            if (resp && resp.ok) {
+                layui.layer.msg('执行成功', { icon: 1, time: 1500 });
+                if (typeof onDone === 'function') onDone(true);
+            } else {
+                layui.layer.msg((resp && resp.error_msg) || '执行失败', { icon: 2, time: 2500 });
+                if (typeof onDone === 'function') onDone(false);
+            }
+        },
+        error: function() {
+            layui.layer.close(loadIdx);
+            layui.layer.msg('请求失败，请稍后重试', { icon: 2, time: 2500 });
+            if (typeof onDone === 'function') onDone(false);
+        }
+    });
+}
+
+function bindRemedyButtons() {
+    $('.btn-remedy-invoke').off('click').on('click', function() {
+        var pk = $(this).data('provider-key');
+        var action = $(this).data('action');
+        var $row = $(this).closest('tr');
+        var config = {};
+        $row.data('config', $row.data('config') || {});
+        invokeProviderAction(pk, action, $row.data('config'), function() {
+            detectProjectHealth();
+        });
+    });
+    $('.btn-remedy-install').off('click').on('click', function() {
+        var appName = $(this).data('app-name');
+        if (!appName) {
+            layui.layer.msg('未知所属应用', { icon: 2 });
+            return;
+        }
+        var installUrl = '{% url "appmanage:install" %}?app_name=' + encodeURIComponent(appName) + '&next=' + encodeURIComponent(window.location.pathname);
+        window.location.href = installUrl;
+    });
+}
+
+function detectProjectHealth() {
+    var $btn = $('#btn-recheck-health');
+    var $badge = $('#overall-badge');
+    var pid = $btn.data('project-id');
+    if (!pid) return;
+
+    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> 检测中...');
+    $badge.removeClass().addClass('badge badge-secondary').text('检测中...');
+    $('.td-health').html('<span class="badge badge-secondary">检测中...</span>');
+
+    $.post('{% url "project_mgmt:api_health_check" %}', {project_id: pid}, function(resp) {
+        $btn.prop('disabled', false).html('<i class="fa-solid fa-rotate"></i> 重测健康');
+        if (!resp.ok) {
+            $badge.removeClass().addClass('badge badge-danger').text('检测失败');
+            $('.td-health').html('<span class="badge badge-danger">失败</span>');
+            return;
+        }
+        var h = resp.data;
+
+        var overall = HEALTH_STYLE[h.overall] || { cls: 'badge-secondary', text: '未知' };
+        $badge.removeClass().addClass('badge ' + overall.cls).text(overall.text);
+
+        var bindings_map = {};
+        for (var i = 0; i < (h.bindings || []).length; i++) {
+            var hb = h.bindings[i];
+            bindings_map[hb.provider_key] = hb;
+        }
+
+        $('tr[data-provider-key]').each(function() {
+            var pk = $(this).data('provider-key');
+            var info = bindings_map[pk];
+            if (!info) return;
+            $(this).data('config', info.config || {});
+
+            var style = HEALTH_STYLE[info.state] || { cls: 'badge-secondary', text: '未知' };
+
+            var nameHtml = '<div><b>' + (info.label || pk) + '</b></div>';
+            if (info.depends_on && info.depends_on.length) {
+                nameHtml += '<div class="text-muted small">依赖: ' + info.depends_on.join(', ') + '</div>';
+            }
+            $(this).find('.td-name').html(nameHtml);
+
+            var summaryHtml = info.summary_html || '<span class="text-muted">-</span>';
+            if (info.state !== 'OK') {
+                var errorBlock = '';
+                if (info.verify_hint) {
+                    errorBlock += '<div class="text-danger mt-2"><i class="fa-solid fa-circle-exclamation"></i> ' + info.verify_hint + '</div>';
+                }
+                if (info.error_msg && info.error_msg !== info.verify_hint) {
+                    errorBlock += '<div class="text-danger mt-1" title="' + info.error_msg.replace(/"/g, '&quot;') + '"><i class="fa-solid fa-triangle-exclamation"></i> ' + info.error_msg + '</div>';
+                }
+                var remedy = info.remedy;
+                if (remedy) {
+                    if (remedy.type === 'invoke_action') {
+                        errorBlock += '<div class="mt-2"><button type="button" class="btn btn-xs btn-outline-primary btn-remedy-invoke" data-provider-key="' + pk + '" data-action="' + (remedy.action || '') + '"><i class="fa-solid fa-bolt"></i> ' + (remedy.label || '执行') + '</button></div>';
+                        errorBlock += '<div class="mt-2"><button type="button" class="btn btn-xs btn-outline-danger btn-remedy-install" data-app-name="' + (remedy.app_name || '') + '"><i class="fa-solid fa-download"></i> ' + (remedy.label || '安装扩展') + '</button></div>';
+                    }
+                }
+                if (errorBlock) {
+                    summaryHtml += errorBlock;
+                }
+            }
+            $(this).find('.td-summary').html(summaryHtml);
+
+            var healthHtml = '<span class="badge ' + style.cls + '">' + style.text + '</span>';
+            if (info.state === 'DISABLED' && info.app_name) {
+                healthHtml += '<br><button type="button" class="btn btn-xs btn-outline-secondary mt-1 btn-enable-app" data-app-name="' + info.app_name + '" style="font-size:11px;padding:1px 6px;"><i class="fa-solid fa-power-off"></i> 启用</button>';
+            }
+            $(this).find('.td-health').html(healthHtml);
+        });
+        bindEnableButtons();
+        bindRemedyButtons();
+    }).fail(function() {
+        $btn.prop('disabled', false).html('<i class="fa-solid fa-rotate"></i> 重测健康');
+        $badge.removeClass().addClass('badge badge-danger').text('请求失败');
+        $('.td-health').html('<span class="badge badge-danger">请求失败</span>');
+    });
+}
+
+$('#btn-recheck-health').on('click', detectProjectHealth);
+
+$(function() {
+    setTimeout(detectProjectHealth, 300);
+});
+</script>
+{% endblock %}

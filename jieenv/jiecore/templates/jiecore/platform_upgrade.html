@@ -1,0 +1,145 @@
+{% extends 'layout_main.html' %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-outline card-primary">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fas fa-cloud-upload-alt"></i> 平台升级</h3>
+        <div class="card-tools">
+            <span class="badge badge-primary">当前版本 v{{ platform_version }}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="input-group mb-2">
+            <div class="custom-file">
+                <input type="file" class="custom-file-input" id="platform-zip-input" accept=".zip">
+                <label class="custom-file-label" for="platform-zip-input">选择 platform-*.zip 升级包</label>
+            </div>
+            <div class="input-group-append">
+                <button type="button" id="btn-platform-upload" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> 上传并升级
+                </button>
+            </div>
+        </div>
+        <small class="text-muted">平台升级包文件名需为 <code>platform-{版本号}.zip</code>，解压后顶层条目将直接覆盖对应路径。升级后将自动执行骨架应用的迁移、钩子与 pip 依赖检查。</small>
+
+        {% if upgrade_packages %}
+        <hr>
+        <h6>检测到的平台升级包：</h6>
+        <ul class="list-unstyled">
+        {% for pkg in upgrade_packages %}
+            <li class="media py-1 border-bottom">
+                <i class="fas fa-file-archive text-primary mt-1 mr-2"></i>
+                <div class="media-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <code>{{ pkg.filename }}</code>
+                            <small class="text-muted ml-2">v{{ pkg.version }} {% if pkg.can_upgrade %}(可用){% else %}(已过期/同版本){% endif %}</small>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary btn-platform-zip"
+                                data-zip="{{ pkg.file }}" data-filename="{{ pkg.filename }}"
+                                {% if not pkg.can_upgrade %}disabled{% endif %}>
+                            <i class="fas fa-arrow-up"></i> 升级
+                        </button>
+                    </div>
+                </div>
+            </li>
+        {% endfor %}
+        </ul>
+        {% endif %}
+
+        <hr>
+        <h6>平台更新日志</h6>
+        <div class="platform-changelog-box">
+{% if platform_changelog %}
+<pre class="text-sm" style="white-space: pre-wrap; font-size: 13px;">{{ platform_changelog }}</pre>
+{% else %}
+<small class="text-muted">暂无平台更新日志</small>
+{% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$('.custom-file-input').on('change', function() {
+    var fileName = $(this).val().split('\\').pop();
+    $(this).next('.custom-file-label').html(fileName || '选择 platform-*.zip 升级包');
+});
+
+$(document).on('click', '#btn-platform-upload', function() {
+    var input = document.getElementById('platform-zip-input');
+    if (!input.files || !input.files.length) {
+        layui.use('layer', function(l) { l.msg('请先选择升级包文件', {icon: 2}); });
+        return;
+    }
+    var filename = input.files[0].name;
+    if (!confirm('确认上传升级平台？\n升级包: ' + filename + '\n\n升级将覆盖平台核心文件，并自动执行骨架应用的迁移与依赖检查。建议先备份。')) return;
+
+    var btn = $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 上传中...');
+    var formData = new FormData();
+    formData.append('zip_file', input.files[0]);
+    formData.append('csrfmiddlewaretoken', $('[name=csrfmiddlewaretoken]').val());
+
+    $.ajax({
+        url: "{% url 'jiecore:api_platform_upgrade' %}",
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(res) {
+            btn.prop('disabled', false).html('<i class="fas fa-upload"></i> 上传并升级');
+            if (res.success) {
+                JieTaskLog.open({
+                    title: '平台升级',
+                    taskId: res.task_id,
+                    onSuccess: function () { location.reload(); }
+                });
+            } else {
+                layui.use('layer', function(l) { l.alert('升级失败: ' + (res.message || '未知错误'), {icon: 2}); });
+            }
+        },
+        error: function() {
+            btn.prop('disabled', false).html('<i class="fas fa-upload"></i> 上传并升级');
+            layui.use('layer', function(l) { l.msg('请求失败，请检查网络后重试', {icon: 2, time: 3000}); });
+        }
+    });
+});
+
+$(document).on('click', '.btn-platform-zip', function() {
+    var btn = $(this);
+    var filename = btn.data('filename');
+    var zippath = btn.data('zip');
+    if (!confirm('确认升级平台？\n升级包: ' + filename + '\n\n升级将覆盖平台核心文件，并自动执行骨架应用的迁移与依赖检查。建议先备份。')) return;
+
+    btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> 升级中...');
+
+    $.ajax({
+        url: "{% url 'jiecore:api_platform_upgrade' %}",
+        type: 'POST',
+        data: {
+            zip_path: zippath,
+            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(res) {
+            btn.prop('disabled', false).html('<i class="fas fa-arrow-up"></i> 升级');
+            if (res.success) {
+                JieTaskLog.open({
+                    title: '平台升级',
+                    taskId: res.task_id,
+                    onSuccess: function () { location.reload(); }
+                });
+            } else {
+                layui.use('layer', function(l) { l.alert('升级失败: ' + (res.message || '未知错误'), {icon: 2}); });
+            }
+        },
+        error: function() {
+            btn.prop('disabled', false).html('<i class="fas fa-arrow-up"></i> 升级');
+            layui.use('layer', function(l) { l.msg('请求失败，请检查网络后重试', {icon: 2, time: 3000}); });
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,79 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        <span class="badge badge-info py-2"><i class="fa fa-file-code"></i> {{ instance.name }}</span>
+        {% if ini_path %}
+        <span class="badge badge-secondary py-2"><i class="fa fa-file"></i> {{ ini_path }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if ini_error %}
+<div class="card card-danger card-outline">
+    <div class="card-body">
+        <p class="text-danger"><i class="fa fa-exclamation-triangle"></i> {{ ini_error }}</p>
+        <a href="{% url 'dbmysql:instance_detail' instance.id %}" class="btn btn-default btn-sm">
+            <i class="fa fa-arrow-left"></i> 返回实例详情</a>
+    </div>
+</div>
+{% else %}
+<div class="card card-primary card-outline">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fa fa-edit"></i> 配置文件内容</h3>
+        <div class="card-tools">
+            <span class="text-muted" style="font-size:12px">修改后需重启 MySQL 服务才能生效。不建议直接在此处修改端口。</span>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <textarea id="config-content" class="form-control" rows="25"
+                  style="font-family:Consolas,'Courier New',monospace;font-size:13px;line-height:1.5;resize:vertical"
+                  spellcheck="false">{{ ini_content }}</textarea>
+    </div>
+    <div class="card-footer">
+        <button type="button" id="btn-save" class="btn btn-primary">
+            <i class="fa fa-save"></i> 保存配置</button>
+        <a href="{% url 'dbmysql:instance_detail' instance.id %}" class="btn btn-default">
+            <i class="fa fa-arrow-left"></i> 返回实例详情</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var INSTANCE_ID = '{{ instance.id }}';
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    $('#btn-save').on('click', function () {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm(
+                '保存配置文件后需要重启 MySQL 服务才能生效。<br>确定保存吗？',
+                {icon: 3, title: '确认保存'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+                $.post('{% url "dbmysql:api_instance_config_save" %}', {
+                    id: INSTANCE_ID,
+                    content: $('#config-content').val()
+                }).done(function (res) {
+                    layer.close(loadIdx);
+                    msg(res.message, res.success);
+                }).fail(function () {
+                    layer.close(loadIdx);
+                    msg('请求失败', false);
+                });
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

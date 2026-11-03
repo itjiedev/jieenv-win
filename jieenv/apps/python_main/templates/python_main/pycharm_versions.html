@@ -1,0 +1,171 @@
+{% extends "python_main/layout.html" %}
+
+
+{% block js_code %}
+<script>
+layui.use(function () {
+  var $ = layui.$;
+  var layer = layui.layer;
+  var util = layui.util;
+
+  util.on('lay-on', {
+    // 你原本的抓取版本事件
+    'btn-fetch-versions': function () {
+      var $btn = $(this);
+
+      // 防止重复点击
+      if ($btn.hasClass('layui-btn-disabled')) return;
+      $btn.addClass('layui-btn-disabled');
+
+      // 进度提示：time:0 表示不自动关闭，等请求结束再手动关闭
+      var loadIndex = layer.msg('正在重新抓取数据，请稍候...', {
+        icon: 16,
+        shade: 0.3,
+        time: 0
+      });
+
+      // 后台发起抓取请求
+      $.ajax({
+        url: '{% url "python_main:api_pycharm_version_refresh" %}',
+        type: 'POST',
+        dataType: 'json',
+        timeout: 5 * 60 * 1000,    // 抓取耗时较长，超时设长一点
+
+        success: function (res) {
+          layer.close(loadIndex);                // 关闭进度动画
+          $btn.removeClass('layui-btn-disabled');
+
+          if (res && res.code === 0) {
+            layer.msg('抓取完成，正在刷新页面...', {
+              icon: 1,
+              time: 800                        // 留一点时间让提示被看到
+            }, function () {
+              location.reload();               // 刷新当前页面
+            });
+          } else {
+            layer.msg((res && res.msg) || '抓取失败，请稍后重试', { icon: 2 });
+          }
+        },
+
+        error: function (xhr, status, err) {
+          layer.close(loadIndex);                // 出错也要关闭进度
+          $btn.removeClass('layui-btn-disabled');
+          layer.msg('请求失败：' + (err || status), { icon: 2 });
+        }
+      });
+    },
+
+    // 新增：下载按钮事件
+        'btn-download': function () {
+      var $btn = $(this);
+      var is_unified = $btn.attr('is_unified') === 'True';
+      var exe_url = $btn.attr('exe_url') || '';
+      var community_url = $btn.attr('community_url') || '';
+
+      // 定义弹窗内部 HTML 结构（居中布局）
+      var contentHtml = '<div style="padding: 25px 20px; text-align: center;">';
+
+      if (is_unified) {
+        // is_unified 为 true：只提供合并版（exe_url）
+        if (exe_url) {
+          contentHtml += '<p style="margin-bottom: 10px; color: #666;">当前版本只提供统一版</p>';
+          contentHtml += '<a href="' + exe_url + '" target="_blank" class="layui-btn layui-btn-normal" style="min-width: 120px;">下载统一版</a>';
+        } else {
+          contentHtml += '<p style="color: #999;">暂无统一版下载链接</p>';
+        }
+      } else {
+        // is_unified 为 false：同时提供专业版和社区版
+        contentHtml += '<p style="margin-bottom: 10px; color: #666;">请选择需要下载的版本</p>';
+        
+        if (exe_url) {
+          contentHtml += '<a href="' + exe_url + '" target="_blank" class="layui-btn layui-btn-normal" style="margin-right: 15px; min-width: 100px;">下载专业版</a>';
+        }
+        if (community_url) {
+          // 使用普通按钮样式搭配蓝色边框，区分专业版
+          contentHtml += '<a href="' + community_url + '" target="_blank" class="layui-btn layui-btn-normal" style="min-width: 100px;">下载社区版</a>';
+        }
+        if (!exe_url && !community_url) {
+          contentHtml += '<p style="color: #999;">暂无下载链接</p>';
+        }
+      }
+
+      contentHtml += '</div>';
+
+      // 弹出提示窗口
+      layer.open({
+        type: 1,
+        title: '下载版本选择',
+        area: ['380px', 'auto'], // 宽度固定，高度自适应
+        shade: 0.3,              // 开启遮罩，0.3为背景暗度
+        shadeClose: false,       // 点击遮罩不关闭
+        closeBtn: 1,             // 显示右上角关闭按钮
+        content: contentHtml
+      });
+    }
+  });
+});
+</script>
+{% endblock %}
+
+
+{% block provider_content %}
+<div class="card">
+<div class="card-header">
+    <div class="card-title">
+        <a href="https://www.jetbrains.com/zh-cn/pycharm/download/other/" target="_blank" class="btn btn-outline-info btn-sm">
+                <i class="fas fa-globe"></i> Pycharm下载官网
+        </a>
+    </div>
+    <div class="card-tools">    
+        <span class="text-muted text-sm">本地缓存 · 抓取于 {{ fetched_at }}</span>
+        <button class="btn btn-outline-primary btn-sm ml-2" lay-on="btn-fetch-versions">
+            <i class="fa fa-refresh"></i> 重新抓取
+        </button>
+    </div>
+</div>
+
+<div class="card-header border-0">
+    {% for version in main_versions %}
+    <a href="{% url 'python_main:pycharm_versions_param' version %}" 
+    class="btn btn-outline-info m-1{% if current_main_version == version %} active{% endif %}">{{ version }}</a>
+    {% endfor %}
+</div>
+<div class="card-body bg-light"> 
+    
+<div class="row">
+{% for s_version, s_info in versions.items %}
+    <div class=" col-md-4 col-12 col-sm-4">
+        <div class="card">
+            <div class="card-header"><h5 class="m-0">版本 <span class="text-info text-bold">{{ s_version }}</span></h5></div>
+            <div class="card-body p-0">
+                <table class="table table-hover">
+{% for version, info in s_info.items  %}
+                    <tr{% if current_pycharm and current_pycharm.version == version %} class="table-success"{% endif %}>
+                        <td class="p-2 text-bold">
+                          {{ version }}
+{% if current_pycharm and current_pycharm.version == version %}
+                          <span class="badge badge-success">已安装</span>
+{% endif %} 
+                        </td>
+                        <td class="p-2">
+<button type="button" class="btn btn-outline-info btn-sm"
+        lay-on="btn-download"
+        is_unified="{{ info.is_unified }}"
+        exe_url="{{ info.exe_url }}"
+        community_url="{{ info.community_exe_url }}">下载
+</button>
+{% if not current_pycharm %}
+   <a href="{% url 'python_main:pycharm_install' version %}" class="btn btn-primary btn-sm">安装</a>
+{% endif %}
+                        </td>
+                    </tr>
+{% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+</div>
+{% endblock %}

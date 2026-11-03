@@ -1,0 +1,116 @@
+{% extends "layout_main.html" %}
+
+{% block page_title %}安装应用{% endblock %}
+{% block page_content_title %}安装应用{% endblock %}
+
+{% block page_content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">从 Zip 包安装</h3>
+            </div>
+            <form id="install-zip-form" method="post" enctype="multipart/form-data"
+                  data-url="{% url 'jiecore:api_app_install' %}"
+                  data-redirect="{% if next %}{{ next }}{% else %}{% url 'appmanage:list' %}{% endif %}">
+                {% csrf_token %}
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="zip_file">选择应用包 (.zip)</label>
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" id="zip_file" name="zip_file" accept=".zip">
+                            <label class="custom-file-label" for="zip_file">请选择文件</label>
+                        </div>
+                        <small class="form-text text-muted">
+                            文件格式: appname-version.zip，例如 myapp-1.0.0.zip
+                        </small>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> 安装</button>
+                    <a href="{% url 'appmanage:list' %}" class="btn btn-default float-right">取消</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">从 Python 路径安装</h3>
+            </div>
+            <form id="install-path-form" method="post"
+                  data-url="{% url 'jiecore:api_app_install' %}"
+                  data-redirect="{% if next %}{{ next }}{% else %}{% url 'appmanage:list' %}{% endif %}">
+                {% csrf_token %}
+                <div class="card-body">
+                    <div class="form-group">
+                        <label for="app_path">应用 Python 路径</label>
+                        <input type="text" class="form-control" id="app_path" name="app_path" placeholder="例如: apps.home 或 myplugin">
+                        <small class="form-text text-muted">
+                            输入应用在 Python 中的点分路径，系统自动定位并安装该应用
+                        </small>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-folder-open"></i> 安装</button>
+                    <a href="{% url 'appmanage:list' %}" class="btn btn-default float-right">取消</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$('.custom-file-input').on('change', function() {
+    var fileName = $(this).val().split('\\').pop();
+    $(this).next('.custom-file-label').html(fileName);
+});
+
+function bindInstallForm($form) {
+    $form.on('submit', function(e) {
+        e.preventDefault();
+        if ($form.data('submitting')) return;
+        $form.data('submitting', true);
+
+        var url = $form.data('url');
+        var redirect = $form.data('redirect');
+        var formData = new FormData(this);
+
+        layui.use('layer', function() {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+
+            $.ajax({
+                url: url,
+                type: 'POST',
+                data: formData,
+                dataType: 'json',
+                processData: false,
+                contentType: false
+            }).done(function(res) {
+                layer.close(loadIdx);
+                $form.data('submitting', false);
+                if (res && res.task_id) {
+                    JieTaskLog.open({
+                        title: '安装应用',
+                        taskId: res.task_id,
+                        onSuccess: function () { window.location.href = redirect; }
+                    });
+                } else {
+                    layer.msg((res && res.message) || '安装失败', {icon: 2, time: 4000});
+                }
+            }).fail(function() {
+                layer.close(loadIdx);
+                $form.data('submitting', false);
+                layer.msg('请求失败，请检查网络后重试', {icon: 2, time: 4000});
+            });
+        });
+    });
+}
+
+bindInstallForm($('#install-zip-form'));
+bindInstallForm($('#install-path-form'));
+</script>
+{% endblock %}

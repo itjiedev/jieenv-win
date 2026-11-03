@@ -1,0 +1,250 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title"><i class="fa fa-list"></i> 可安装版本</h3>
+        <div class="card-tools">
+            <span class="text-muted" id="version-source" style="font-size:12px"></span>
+            <span class="text-muted" id="detect-status" style="font-size:12px"></span>
+            <button class="btn btn-primary btn-sm" id="btn-fetch-versions">
+                <i class="fa fa-refresh"></i> 重新抓取
+            </button>
+            <a href="{% url 'python_archive:download_source' %}" class="btn btn-success btn-sm">
+                <i class="fa fa-server"></i> 设置下载源</a>
+        </div>
+    </div>
+    <div class="card-header">
+        <span class="text-muted">
+            独立版本模式将下载 Python完整压缩包 版本进行安装，不同版本安装到不同的目录，版本之间不互不影响！例如：3.13 下的所有小版本可以同时安装共存。
+
+        </span>
+    </div>
+    {# ==================== 新增：筛选条件区 ==================== #}
+    <div class="card-body border-bottom py-2">
+        <div class="d-flex flex-wrap align-items-center">
+            <span class="text-muted mr-3" style="font-size:13px">
+                <i class="fa fa-filter"></i> 筛选：
+            </span>
+
+            <div class="custom-control custom-checkbox mr-3">
+                <input type="checkbox" class="custom-control-input filter-item"
+                       id="flt-arch-32" name="arch" value="32">
+                <label class="custom-control-label" for="flt-arch-32">32-bit</label>
+            </div>
+
+            <div class="custom-control custom-checkbox mr-3">
+                <input type="checkbox" class="custom-control-input filter-item"
+                       id="flt-arch-64" name="arch" value="64" checked>
+                <label class="custom-control-label" for="flt-arch-64">64-bit</label>
+            </div>
+
+            <div class="custom-control custom-checkbox mr-3">
+                <input type="checkbox" class="custom-control-input filter-item"
+                       id="flt-freethreaded" name="free_threaded" value="1">
+                <label class="custom-control-label" for="flt-freethreaded">free-threaded</label>
+            </div>
+
+            <div class="custom-control custom-checkbox mr-3">
+                <input type="checkbox" class="custom-control-input filter-item"
+                       id="flt-withtests" name="with_tests" value="1">
+                <label class="custom-control-label" for="flt-withtests">with tests</label>
+            </div>
+
+            <button type="button" class="btn btn-outline-secondary btn-sm ml-auto" id="btn-reset-filter">
+                <i class="fa fa-undo"></i> 重置筛选
+            </button>
+        </div>
+    </div>
+    {# ==================== 筛选条件区结束 ==================== #}
+
+    <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>压缩包格式</th>
+                    <th>版本</th>
+                    <th>平台</th>
+                    <th style="width:200px">操作</th>
+                </tr>
+            </thead>
+            <tbody id="version-tbody">
+                <tr><td colspan="5" class="text-center text-muted py-4">正在加载版本列表...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer" id="version-pager" style="display:none">
+        <div class="d-flex justify-content-between align-items-center">
+            <span class="text-muted" id="version-total" style="font-size:12px"></span>
+            <ul class="pagination pagination-sm mb-0" id="version-pages"></ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    var INSTALL_URL = '{% url "python_archive:install_options" %}';
+    var VERSIONS_URL = '{% url "python_archive:api_versions" %}';
+    var allVersions = [];   // 全部版本（后端已按版本号倒序）
+    var installedMap = {};  // 系统已安装版本 {version: {path, source}}
+    var pageSize = 20;      // 每页条数
+    var currentPage = 1;    // 当前页
+    var pendingXhr = null;  // 进行中的请求，用于取消过期请求
+
+    // ---------- 收集筛选条件 ----------
+    function collectFilters() {
+        var params = {};
+        var arches = [];
+        $('input[name="arch"]:checked').each(function () {
+            arches.push($(this).val());
+        });
+        // 始终发送 arch 参数：无勾选时发 'all' 表示不按架构过滤（显示所有架构）
+        params.arch = arches.length ? arches.join(',') : 'all';
+        if ($('#flt-freethreaded').is(':checked')) { params.free_threaded = '1'; }
+        if ($('#flt-withtests').is(':checked'))    { params.with_tests   = '1'; }
+        return params;
+    }
+
+    function renderPage() {
+        var $tbody = $('#version-tbody');
+        var total = allVersions.length;
+        if (!total) {
+            $tbody.html('<tr><td colspan="5" class="text-center text-muted py-4">没有符合筛选条件的版本</td></tr>');
+            $('#version-pager').hide();
+            return;
+        }
+        var totalPages = Math.ceil(total / pageSize);
+        if (currentPage > totalPages) { currentPage = totalPages; }
+        if (currentPage < 1) { currentPage = 1; }
+        var start = (currentPage - 1) * pageSize;
+        var end = Math.min(start + pageSize, total);
+        var html = '';
+        for (var i = start; i < end; i++) {
+            var v = allVersions[i];
+            var inst = installedMap[v.version];
+            var verCell = '<b>' + v['display_name'] + '</b>';
+            var actionCell;
+
+            actionCell = '<a href="'+v.url+'" class="btn btn-outline-info btn-sm mr-1" target="_blank">下载</a>';
+            if (inst) {
+                var p = inst.path || '';
+                verCell += ' <span class="badge badge-success" title="' + p + '">已安装</span>';
+                actionCell += '<span class="text-success" title="' + p + '"><i class="fa fa-check-circle"></i> 已安装</span>';
+            } else {
+                actionCell += '<a href="' + INSTALL_URL + '?version_id=' + v.id
+                    + '" class="btn btn-info btn-sm" ><i class="fa fa-download"></i> 安装</a>';
+            }
+            html += '<tr>'
+                + '<td>' + verCell + '</td>'
+                + '<td>' + v.ext + '</td>'
+                + '<td>' + v.version + '</td>'
+                + '<td>' + v.arch + '-bit</td>'
+                + '<td>' + actionCell + '</td>'
+                + '</tr>';
+        }
+        $tbody.html(html);
+        var installedCount = 0;
+        for (var k = 0; k < total; k++) { if (installedMap[allVersions[k].version]) { installedCount++; } }
+        $('#version-total').text('共 ' + total + ' 个可安装版本（已安装 ' + installedCount
+            + ' 个），第 ' + currentPage + '/' + totalPages + ' 页');
+        renderPager(totalPages);
+        $('#version-pager').show();
+    }
+
+    function renderPager(totalPages) {
+        var $pages = $('#version-pages').empty();
+        function addItem(label, page, disabled, active) {
+            $pages.append('<li class="page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '') + '">'
+                + '<a class="page-link" href="#" data-page="' + page + '">' + label + '</a></li>');
+        }
+        addItem('&laquo;', currentPage - 1, currentPage <= 1, false);
+        // 页码窗口：以当前页为中心最多显示 5 个页码
+        var from = Math.max(1, currentPage - 2);
+        var to = Math.min(totalPages, from + 4);
+        from = Math.max(1, to - 4);
+        if (from > 1) {
+            addItem('1', 1, false, false);
+            if (from > 2) { addItem('&hellip;', 0, true, false); }
+        }
+        for (var p = from; p <= to; p++) { addItem(String(p), p, false, p === currentPage); }
+        if (to < totalPages) {
+            if (to < totalPages - 1) { addItem('&hellip;', 0, true, false); }
+            addItem(String(totalPages), totalPages, false, false);
+        }
+        addItem('&raquo;', currentPage + 1, currentPage >= totalPages, false);
+    }
+
+    $('#version-pages').on('click', '.page-link', function (e) {
+        e.preventDefault();
+        var $li = $(this).parent();
+        if ($li.hasClass('disabled') || $li.hasClass('active')) { return; }
+        var page = parseInt($(this).attr('data-page'), 10);
+        if (!page || isNaN(page)) { return; }
+        currentPage = page;
+        renderPage();
+    });
+
+    function fetchVersions(refresh) {
+        var $tbody = $('#version-tbody');
+        $('#version-source').text('');
+        $tbody.html('<tr><td colspan="5" class="text-center text-muted py-4">'
+            + (refresh ? '正在从 Python 官网重新抓取版本列表...' : '正在加载版本列表...')
+            + '</td></tr>');
+
+        // 取消上一次尚未完成的请求，避免旧响应覆盖新结果
+        if (pendingXhr) { pendingXhr.abort(); }
+
+        var params = collectFilters();          // ★ 筛选条件
+        if (refresh) { params.refresh = 1; }
+
+        pendingXhr = $.get(VERSIONS_URL, params).done(function (res) {
+            if (!res || !res.success) {
+                $tbody.html('<tr><td colspan="5" class="text-center text-danger py-4">获取版本列表失败</td></tr>');
+                return;
+            }
+            if (res.source === 'cache') {
+                $('#version-source').text('本地缓存 · 抓取于 ' + (res.fetched_at || '未知时间'));
+            } else {
+                $('#version-source').text('官网实时抓取 · ' + (res.fetched_at || ''));
+                if (refresh) { msg('已从官网重新抓取版本列表', true); }
+            }
+            allVersions = res.versions || [];
+            currentPage = 1;
+            renderPage();
+            {#detectInstalled();#}
+        }).fail(function (jqXHR, textStatus) {
+            if (textStatus === 'abort') { return; }   // 被新请求取消，忽略
+            $tbody.html('<tr><td colspan="5" class="text-center text-danger py-4">抓取请求失败，请检查网络</td></tr>');
+            $('#version-pager').hide();
+        });
+    }
+
+    // ---------- 筛选事件 ----------
+    $('.filter-item').on('change', function () {
+        fetchVersions(false);   // 勾选变化立即向后端重新筛选（走缓存，不重新抓官网）
+    });
+
+    $('#btn-reset-filter').on('click', function () {
+        $('.filter-item').prop('checked', false);
+        $('#flt-arch-64').prop('checked', true);
+        fetchVersions(false);
+    });
+
+    $('#btn-fetch-versions').on('click', function () { fetchVersions(true); });
+
+    // 页面加载时自动获取版本列表
+    fetchVersions(false);
+});
+</script>
+{% endblock %}

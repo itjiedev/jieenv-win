@@ -1,0 +1,100 @@
+v1.0.0
+- 修复部分BUG
+-------------------------------------------------------------------------
+v0.10.0
+- 终端启动逻辑从本地 subprocess.Popen 替换为 jiecore.open_terminal(subprocess_env=..., activate_cmd=...)
+  复用已合并的 PATH_prepend + 虚拟环境激活命令，与 python_installer / python_archive 行为统一
+-------------------------------------------------------------------------
+v0.9.0
+- 新增「打开终端」功能（详情页按钮 + 项目列表快捷图标）：
+  · 后端 api_open_terminal：从 provider binding 收集 env_hints（PATH_prepend + activate_cmd），
+    cmd.exe /k 执行激活命令 + subprocess env 注入 PATH 双重保险，支持 venv 和直接指定 Python 两种模式
+  · 新增 _storage_collect_env_hints：遍历 provider binding 跳过 action 类型，显式传 project_dir/project_name
+  · 新增 _merge_to_subprocess_env：合并 env dict + PATH_prepend 前置 + 返回 activate_cmd
+  · 无 activate_cmd 时仅打开 cwd 不报错，无 provider 时友好降级
+- 项目列表页新增三个便捷图标按钮（btn-outline-secondary btn-xs）：
+  · 项目标题前：打开终端图标按钮
+  · 项目路径前：打开目录 + 复制路径图标按钮
+  · 复用后端 api_open_dir（已存在）+ Clipboard API 纯前端复制
+- 详情页「打开终端」按钮同步接入同一后端 API
+-------------------------------------------------------------------------
+v0.8.0
+- BindingFormApiView 新增聚合层 provider 降级检测：
+  当 provider 已安装但 options_from 全空（说明是聚合层且贡献者全灭），
+  且 provider 声明了 contributor_name_prefix 时：
+    查 _PROVIDER_APP_INDEX 过滤出贡献者应用
+    查 AppManager.get_all_apps() 区分禁用 / 未安装两种场景
+  动态 degrade_error + disabled_contributors / missing_contributors 传给模板
+- create_binding_item.html 新增降级分支：
+  显示红色警告 + 每个禁用贡献者一个「启用 + display_name」按钮
+  + 每个未安装贡献者一个「安装 + display_name」按钮
+  按钮 data-app 用 app_name（内部标识），显示用 display_name（用户友好）
+- 独立 provider（如 dbmysql）禁用/未安装样式统一为红色警告风格
+- 降级检测零硬编码应用名：provider 通过 contributor_name_prefix 自声明命名规律，
+  project_mgmt 用 _PROVIDER_APP_INDEX AST 扫描动态识别
+-------------------------------------------------------------------------
+v0.7.0
+- snapshot.py 快照 schema 从 v1 升级到 v2（三大致命缺陷全部修复）：
+  · binding_type 区分 provider / action binding（engine.py 创建时写入该字段）
+  · action binding 全量存 config_snapshot，跳过 schema 过滤（params 本身就是 invoke_action 需要的完整参数）
+  · 新增 invoke_action 字段，rebuild_from_snapshot 自包含零推断——invoke_action 是什么就调什么，恢复时不查 templates.py/action_registry
+- 新增 rebuild_from_snapshot(project_dir, snap=None) 函数：从快照零依赖重建环境，provider 未安装时友好降级
+- 新增 _prepare_rebuild_config：rebuild 到新目录时自动替换源项目路径 + {PROJECT_*} 占位符替换 + packages list → string
+- 新增 _is_preserved_key 通用化规则（v1 只有 _IDENTITY_KEYS）：下划线开头 / _version 结尾 / _sub 结尾 三类运行时字段强制保留
+- engine.py 4 处旧 _action_type config 判断统一改为 binding_type 字段判断（env_hints 过滤 + 三处 provider_bindings 列表构建）
+- snapshot.py _sanitize_binding_config 新增 provider_def is None 保护：provider 不存在时宁可多存也不丢数据
+-------------------------------------------------------------------------
+v0.4.0
+- engine._preflight_check 重构：errors/warnings 统一为 {'provider_key': pk, 'message': str} dict 结构
+  （之前是纯字符串列表，前端 showBindingErrors 无法按 provider_key 挂到对应组件卡片上）
+- engine preflight 调用链修复：ProviderResult.success=False 时 data 也能展开
+  （之前 rr.success 卡死了 errors/warnings 提取逻辑，只能 fallback 到 generic error_msg）
+- create.html onFail 去掉 300ms 强制跳任务详情页：改为停留当前页、按钮恢复可点、红色错误条常驻
+- 非版本型 options_from（如下载源）version 为空串时从 error 降级为 warning
+-------------------------------------------------------------------------
+v0.3.1
+- 详情页健康状态改为前端异步探测：去掉 ProjectDetailView 中 check_binding_health()
+  同步调用（MySQL TCP 超时 × N 组件导致首屏卡秒级），页面加载后 300ms 自动调
+  api_health_check 异步填充所有组件徽章
+- 「重测健康」按钮同步更新 overall + 每行组件徽章（之前只更新 overall）
+- binding_health.health_label 默认值从「未知」改为「探测中...」更准确
+-------------------------------------------------------------------------
+v0.3.0
+- 新增项目详情页（project_detail.html）：四层骨架（基础信息/组件清单/目录预览/操作区）
+  · 组件清单：按 provider 分类显示，配置摘要完全由 config_schema 动态生成
+  · 目录预览：竖向文件列表模拟，支持展开/折叠
+  · 操作区：复制路径按钮、健康状态徽章
+  · 列表页点击项目标题直接跳转详情
+- 创建向导必填校验修复（关键 bug）：jQuery .data('required') 自动类型转换把
+  data-required="1"（字符串）转成数字 1，导致 1 === '1' 永远 false，必填校验彻底失效。
+  改用 .attr('data-required') 避免类型转换
+- _config_summary 重构为通用机制：从硬编码 runtime/db 字段改为完全基于
+  provider 的 lifecycle.create.config_schema 动态渲染
+  · password/sensitive 字段显示 ••••••
+  · checkbox 显示 ✅ 开启 / ❌ 关闭
+  · select 优先显示 option.version（干净的版本号）而非拼接 label
+  · 自动调用 options_from.capability 获取动态选项
+- 创建向导实时校验：必填空字段红色警告 + 提交时 validateBindings 拦截
+- MySQL lifecycle required 区分：setup 阶段 password 必填，
+  verify/delete/health 阶段 password 非必填
+- provider_services.verify_database / delete_database 添加 password 默认空值兼容
+- 创建结果页新增「项目详情」按钮，成功创建后可直接跳转
+- 创建时多存 template_name 快照，详情页优先显示（模板改名/删除不受影响）
+- 详情页模板字段改为「初始模板」明确语义
+- 回收站列表目录路径移至标题下方，与项目列表一致
+- 项目模板调整：删除测试模板，新增 python_django_mysql 模板
+  （Python 3.13.16 / Django ~=5.2 / MySQL 8.4）
+-------------------------------------------------------------------------
+v0.2.0
+- Phase 2 完成：创建向导完整骨架
+  · 四层 UI：模板选择 → 基础信息 → 组件配置 → 摘要确认
+  · 动态 provider 注册 + hooks.py config_schema 驱动表单生成
+  · 摘要实时预览（前端 refreshSummary）
+  · JieTask 异步创建 + 实时日志轮询
+-------------------------------------------------------------------------
+v0.1.0
+- Phase 1 完成：框架搭建
+  · provider_catalog + event_bus + app_services 三层架构
+  · 项目列表页（index.html）基础 CRUD
+  · JSON storage 持久化（projects.json / trash.json / snapshots/）
+  · 回收站软删除 + 恢复

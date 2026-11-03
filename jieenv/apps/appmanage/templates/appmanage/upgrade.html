@@ -1,0 +1,102 @@
+{% extends "layout_main.html" %}
+
+{% block page_title %}升级应用{% endblock %}
+{% block page_content_title %}升级应用{% endblock %}
+
+{% block page_content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">升级应用：{{ app.display_name|default:app.app_name }}</h3>
+            </div>
+            <form id="upgrade-form" method="post" enctype="multipart/form-data"
+                  data-url="{% url 'jiecore:api_app_action' app_name=app.app_name action='upgrade' %}"
+                  data-redirect="{% url 'appmanage:list' %}">
+                {% csrf_token %}
+                <div class="card-body">
+                    <dl class="row mb-3">
+                        <dt class="col-sm-3">应用标识：</dt>
+                        <dd class="col-sm-9"><code>{{ app.app_name }}</code></dd>
+                        <dt class="col-sm-3">当前版本：</dt>
+                        <dd class="col-sm-9">{{ app.version }}</dd>
+                    </dl>
+                    <div class="form-group">
+                        <label for="zip_file">选择升级包 (.zip)</label>
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" id="zip_file" name="zip_file" accept=".zip" required>
+                            <label class="custom-file-label" for="zip_file">请选择文件</label>
+                        </div>
+                        <small class="form-text text-muted">
+                            文件格式: appname-version.zip，例如 {{ app.app_name }}-2.0.0.zip。
+                            升级包版本必须高于当前版本。
+                        </small>
+                    </div>
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        升级将执行：版本比对 → 备份当前版本 → 覆盖应用文件 → 数据库迁移 →
+                        应用内置升级程序（若提供 upgrade.py）→ 更新注册信息与缓存。
+                        任一步骤失败会自动回滚文件。升级前建议备份数据库，升级后建议重启服务。
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-arrow-circle-up"></i> 升级</button>
+                    <a href="{% url 'appmanage:detail' app.app_name %}" class="btn btn-default float-right">取消</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$('.custom-file-input').on('change', function() {
+    var fileName = $(this).val().split('\\').pop();
+    $(this).next('.custom-file-label').html(fileName);
+});
+
+(function() {
+    var $form = $('#upgrade-form');
+    $form.on('submit', function(e) {
+        e.preventDefault();
+        if ($form.data('submitting')) return;
+        $form.data('submitting', true);
+
+        var url = $form.data('url');
+        var redirect = $form.data('redirect');
+        var formData = new FormData(this);
+
+        layui.use('layer', function() {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+
+            $.ajax({
+                url: url,
+                type: 'POST',
+                data: formData,
+                dataType: 'json',
+                processData: false,
+                contentType: false
+            }).done(function(res) {
+                layer.close(loadIdx);
+                $form.data('submitting', false);
+                if (res && res.task_id) {
+                    JieTaskLog.open({
+                        title: '升级应用 {{ app.display_name|default:app.app_name }}',
+                        taskId: res.task_id,
+                        onSuccess: function () { window.location.href = redirect; }
+                    });
+                } else {
+                    layer.msg((res && res.message) || '升级失败', {icon: 2, time: 4000});
+                }
+            }).fail(function() {
+                layer.close(loadIdx);
+                $form.data('submitting', false);
+                layer.msg('请求失败，请检查网络后重试', {icon: 2, time: 4000});
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}

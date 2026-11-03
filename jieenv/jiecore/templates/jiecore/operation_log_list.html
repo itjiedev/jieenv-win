@@ -1,0 +1,205 @@
+{% extends "layout_main.html" %}
+
+{% block css_code %}
+<style>
+  .op-table td, .op-table th { font-size: .88rem; vertical-align: middle; }
+  .op-table .op-time { white-space: nowrap; color: #6c757d; width: 170px; }
+  .op-table .op-app { width: 120px; }
+  .op-table .op-result { width: 70px; text-align: center; }
+  .op-table .op-actions { width: 130px; text-align: center; }
+  .op-detail-btn { cursor: pointer; color: #007bff; text-decoration: underline; font-size: .8rem; }
+  .op-detail-btn:hover { color: #0056b3; }
+  .op-detail-content { white-space: pre-wrap; word-break: break-all; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 12px; border-radius: 4px; }
+  .pagination-wrapper { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
+  .pagination-wrapper .pagination { margin: 0; }
+  .pagination-wrapper .page-info { font-size: .85rem; color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title"><i class="fas fa-history mr-1"></i> 操作日志</h3>
+    <div class="card-tools">
+      <button type="button" class="btn btn-sm btn-danger" id="btn-clear-all"
+              {% if not operations %}disabled{% endif %}>
+        <i class="fas fa-trash-alt mr-1"></i>全部清空
+      </button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover op-table table-sm mb-0">
+      <thead class="thead-light">
+        <tr>
+          <th class="op-time">时间</th>
+          <th class="op-app">应用</th>
+          <th>操作描述</th>
+          <th class="op-result">结果</th>
+          <th class="op-actions">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for op in operations %}
+        <tr id="op-row-{{ op.id }}">
+          <td class="op-time">{{ op.created_at|date:"Y-m-d H:i:s" }}</td>
+          <td class="op-app"><span class="badge badge-light">{{ op.app_name }}</span></td>
+          <td class="op-action">
+            {{ op.action }}
+            {% if op.detail %}
+              <span class="op-detail-btn" data-id="{{ op.id }}">[详情]</span>
+            {% endif %}
+          </td>
+          <td class="op-result">
+            {% if op.success %}
+              <span class="badge badge-success">成功</span>
+            {% else %}
+              <span class="badge badge-danger">失败</span>
+            {% endif %}
+          </td>
+          <td class="op-actions">
+            <button type="button" class="btn btn-xs btn-outline-danger btn-delete-op"
+                    data-id="{{ op.id }}" title="删除">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">暂无操作记录</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if is_paginated %}
+  <div class="pagination-wrapper">
+    <span class="page-info">共 {{ paginator.count }} 条，第 {{ page_obj.number }}/{{ paginator.num_pages }} 页</span>
+    <ul class="pagination pagination-sm">
+      {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">上一页</span></li>
+      {% endif %}
+      {% for num in page_obj.paginator.page_range %}
+        {% if num == page_obj.number %}
+          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+        {% elif num > page_obj.number|add:"-4" and num < page_obj.number|add:"4" %}
+          <li class="page-item"><a class="page-link" href="?page={{ num }}">{{ num }}</a></li>
+        {% endif %}
+      {% endfor %}
+      {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">下一页</span></li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function() {
+  var csrfToken = $('[name=csrfmiddlewaretoken]').val();
+
+  // 查看详情弹窗（通过 API 查询详情内容）
+  var _detailUrlTpl = '{% url "jiecore:api_op_log_detail" log_id=0 %}';
+  $('.op-detail-btn').on('click', function() {
+    var logId = $(this).data('id');
+    layui.use('layer', function() {
+      var layer = layui.layer;
+      var loadIdx = layer.load(2, {shade: [0.3, '#fff']});
+      $.get(_detailUrlTpl.replace('/0/', '/' + logId + '/')).done(function(res) {
+        layer.close(loadIdx);
+        if (res && res.success) {
+          var html = '<div class="op-detail-content">' +
+            res.detail.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+          layer.open({
+            type: 1,
+            title: '操作详情 - ' + res.action,
+            area: ['500px', 'auto'],
+            shade: 0.3,
+            shadeClose: false,
+            content: html,
+            btn: ['关闭'],
+            yes: function(index) { layer.close(index); }
+          });
+        } else {
+          layer.msg((res && res.message) || '查询失败', {icon: 2, time: 3000});
+        }
+      }).fail(function() {
+        layer.close(loadIdx);
+        layer.msg('请求失败', {icon: 2, time: 3000});
+      });
+    });
+  });
+
+  // 删除单条
+  var _delUrlTpl = '{% url "jiecore:api_op_log_delete" log_id=0 %}';
+  $('.btn-delete-op').on('click', function() {
+    var btn = $(this);
+    var logId = btn.data('id');
+    layui.use('layer', function() {
+      var layer = layui.layer;
+      layer.confirm('确认删除此条操作记录？', {
+        title: '确认删除',
+        shade: 0.3,
+        btn: ['删除', '取消']
+      }, function(index) {
+        layer.close(index);
+        $.ajax({
+          url: _delUrlTpl.replace('/0/', '/' + logId + '/'),
+          type: 'POST',
+          headers: {'X-CSRFToken': csrfToken},
+          dataType: 'json',
+          success: function(res) {
+            if (res && res.success) {
+              $('#op-row-' + logId).fadeOut(300, function() { $(this).remove(); });
+              layer.msg('已删除', {icon: 1, time: 1000});
+            } else {
+              layer.msg((res && res.message) || '删除失败', {icon: 2, time: 3000});
+            }
+          },
+          error: function() {
+            layer.msg('请求失败', {icon: 2, time: 3000});
+          }
+        });
+      });
+    });
+  });
+
+  // 全部清空
+  $('#btn-clear-all').on('click', function() {
+    layui.use('layer', function() {
+      var layer = layui.layer;
+      layer.confirm('确认清空全部操作日志？此操作不可恢复！', {
+        title: '确认清空',
+        shade: 0.3,
+        btn: ['清空', '取消']
+      }, function(index) {
+        layer.close(index);
+        $.ajax({
+          url: '{% url "jiecore:api_op_log_clear" %}',
+          type: 'POST',
+          headers: {'X-CSRFToken': csrfToken},
+          dataType: 'json',
+          success: function(res) {
+            if (res && res.success) {
+              layer.msg(res.message || '已清空', {icon: 1, time: 1500});
+              setTimeout(function() { location.reload(); }, 800);
+            } else {
+              layer.msg((res && res.message) || '清空失败', {icon: 2, time: 3000});
+            }
+          },
+          error: function() {
+            layer.msg('请求失败', {icon: 2, time: 3000});
+          }
+        });
+      });
+    });
+  });
+});
+</script>
+{% endblock %}

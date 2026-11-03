@@ -1,0 +1,262 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-outline card-info">
+    <div class="card-header p-2">
+        <h3 class="card-title">
+            <i class="fa fa-cubes"></i> 已安装的包
+            <small class="text-muted ml-2" id="env-label">{{ record.version }}</small>
+        </h3>
+        <div class="card-tools">
+            <div class="input-group input-group-sm" style="width:220px;display:inline-flex;vertical-align:middle;">
+                <input type="text" class="form-control" id="filter-input" placeholder="本地过滤包名...">
+                <div class="input-group-append">
+                    <span class="input-group-text"><i class="fa fa-filter"></i></span>
+                </div>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" id="btn-refresh">
+                <i class="fa fa-refresh"></i> 刷新</button>
+            <button class="btn btn-outline-warning btn-sm" id="btn-check-outdated">
+                <i class="fa fa-arrow-up"></i> 检查可升级</button>
+            <button class="btn btn-outline-info btn-sm" id="btn-export-req">
+                <i class="fa fa-download"></i> 导出 requirements.txt</button>
+            <a href="{{ url_install }}" class="btn btn-success btn-sm">
+                <i class="fa fa-plus"></i> 安装新包</a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>包名</th>
+                    <th style="width:140px">版本</th>
+                    <th style="width:160px">最新版本</th>
+                    <th style="width:150px" class="text-right">操作</th>
+                </tr>
+            </thead>
+            <tbody id="pip-tbody">
+                <tr><td colspan="4" class="text-center text-muted py-4">
+                    <i class="fa fa-spinner fa-spin"></i> 正在加载包列表...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_LIST = '{{ api_pip_list }}';
+    var API_OUTDATED = '{{ api_pip_outdated }}';
+    var API_UPGRADE = '{{ api_pip_upgrade }}';
+    var API_UNINSTALL = '{{ api_pip_uninstall }}';
+    var API_EXPORT_REQ = '{{ api_pip_requirements_export }}';
+    var CSRF = $('input[name=csrfmiddlewaretoken]').val();
+
+    var allPackages = [];   // 全量包
+    var outdatedChecked = false;  // 是否已检查过可升级项
+
+    function esc(s) {
+        return $('<span>').text(s == null ? '' : String(s)).html();
+    }
+
+    function msg(text, ok, time) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: time || 2500});
+        });
+    }
+
+    function render(filterText) {
+        var kw = (filterText || '').trim().toLowerCase();
+        var list = kw
+            ? allPackages.filter(function (p) { return p.name.toLowerCase().indexOf(kw) >= 0; })
+            : allPackages;
+
+        if (!list.length) {
+            $('#pip-tbody').html('<tr><td colspan="4" class="text-center text-muted py-4">'
+                + (allPackages.length ? '无匹配的包' : '该环境下暂无已安装的包') + '</td></tr>');
+            return;
+        }
+        var rows = list.map(function (p) {
+            var latest = p.upgradable
+                ? '<span class="badge badge-warning">' + esc(p.latest_version) + '</span>' +
+                '<a href="https://pypi.org/project/' + esc(p.name) + '/' + esc(p.latest_version) + '/" target="_blank">' +
+                '<i class="fas fa-globe"></i></a>' +
+                '<a href="javascript:;" class="btn-upgrade" data-old="' + esc(p.version) + '" ' +
+                'data-last="' + esc(p.latest_version) + '" data-name="' + esc(p.name) + '" title="升级到 ' + esc(p.latest_version) + '">'
+                    + '<i class="fas fa-upload"></i></a>'
+                : (p.latest_version
+                    ? '<span class="text-success">' + esc(p.latest_version) + ' <i class="fa fa-check"></i></span>'
+                    : '<span class="text-muted">-</span>');
+            var ops = '';
+            ops += '<button class="btn btn-outline-danger btn-sm btn-uninstall" data-name="'
+                + esc(p.name) + '" title="卸载"><i class="fa fa-trash"></i></button>';
+            return '<tr>'
+                + '<td><b>' + esc(p.name) + '</b></td>'
+                + '<td><code>' + esc(p.version) + '</code>'
+                + '<a href="https://pypi.org/project/' + esc(p.name) + '/' + esc(p.version) + '/" target="_blank"><i class="fas fa-globe"></i></a>'
+                + '</td>'
+                + '<td>' + latest + '</td>'
+                + '<td class="text-right">' + ops + '</td>'
+                + '</tr>';
+        }).join('');
+        $('#pip-tbody').html(rows);
+    }
+
+    function loadList() {
+        outdatedChecked = false;
+        $('#btn-check-outdated').html('<i class="fa fa-arrow-up"></i> 检查可升级').prop('disabled', false);
+        $('#pip-tbody').html('<tr><td colspan="4" class="text-center text-muted py-4">'
+            + '<i class="fa fa-spinner fa-spin"></i> 正在加载包列表...</td></tr>');
+        $.get(API_LIST).done(function (res) {
+            if (res && res.success) {
+                allPackages = res.packages || [];
+                if (res.env_label) { $('#env-label').text(res.env_label); }
+                render($('#filter-input').val());
+            } else {
+                $('#pip-tbody').html('<tr><td colspan="4" class="text-center text-danger py-4">'
+                    + esc((res && res.message) || '加载失败') + '</td></tr>');
+            }
+        }).fail(function () {
+            $('#pip-tbody').html('<tr><td colspan="4" class="text-center text-danger py-4">'
+                + '请求失败，请检查网络</td></tr>');
+        });
+    }
+
+    function loadOutdated() {
+        if (outdatedChecked) { render($('#filter-input').val()); return; }
+        var $btn = $('#btn-check-outdated').prop('disabled', true)
+            .html('<i class="fa fa-spinner fa-spin"></i> 检查中...');
+        $.get(API_OUTDATED).done(function (res) {
+            if (res && res.success) {
+                var outdated = res.outdated || {};
+                allPackages.forEach(function (p) {
+                    var lv = outdated[p.name.toLowerCase()] || '';
+                    p.latest_version = lv;
+                    p.upgradable = !!lv;
+                });
+                outdatedChecked = true;
+                $btn.html('<i class="fa fa-check"></i> 已检查');
+                render($('#filter-input').val());
+            } else {
+                msg((res && res.message) || '检查可升级项失败', false);
+                $btn.html('<i class="fa fa-arrow-up"></i> 检查可升级').prop('disabled', false);
+            }
+        }).fail(function () {
+            msg('请求失败，请检查网络', false);
+            $btn.html('<i class="fa fa-arrow-up"></i> 检查可升级').prop('disabled', false);
+        });
+    }
+
+    // 升级（单个 / 一键全升）：后台任务 + JieTaskLog 实时日志
+    function runUpgrade(names, title) {
+        $.post(API_UPGRADE, {
+            packages: names.join(','),
+            csrfmiddlewaretoken: CSRF
+        }).done(function (res) {
+            if (!res || !res.success || !res.task_id) {
+                msg((res && res.message) || '创建升级任务失败', false);
+                return;
+            }
+            JieTaskLog.open({
+                title: title,
+                taskId: res.task_id,
+                width: '640px', height: '460px', logHeight: 300,
+                onSuccess: function () { setTimeout(loadList, 300); },
+                onFail: function (result) { msg((result && result.message) || '升级失败', false, 3500); }
+            });
+        }).fail(function () { msg('请求失败，请检查网络', false); });
+    }
+
+    $(document).on('click', '.btn-upgrade', function () {
+        var name = $(this).data('name');
+        var old = $(this).data('old');
+        var last = $(this).data('last');
+        layui.use('layer', function () {
+            layer.confirm(
+                '确定将包「' + name + '」从 <span class="text-primary text-bold">' + old + '</span> 升级到 <span class="text-primary text-bold">' + last + '</span> 吗？',
+                {icon: 3, title: '确认升级'}, function (index) {
+                layer.close(index);
+                runUpgrade([name], '升级 ' + name);
+            });
+        });
+    });
+
+    $('#btn-refresh').on('click', loadList);
+    $('#btn-check-outdated').on('click', loadOutdated);
+    $('#filter-input').on('input', function () { render($(this).val()); });
+
+    $('#btn-export-req').on('click', function () {
+        if (!API_EXPORT_REQ) { msg('导出接口未就绪', false); return; }
+        if (window.pywebview && window.pywebview.platform) {
+            window.location.href = API_EXPORT_REQ;
+            return;
+        }
+        var $btn = $(this).prop('disabled', true)
+            .html('<i class="fa fa-spinner fa-spin"></i> 导出中...');
+        fetch(API_EXPORT_REQ).then(function (resp) {
+            return resp.ok ? resp.text() : resp.json();
+        }).then(function (data) {
+            if (typeof data !== 'string') {
+                msg((data && data.message) || '导出失败', false);
+                return;
+            }
+            if (!data.trim()) {
+                msg('该环境下暂无已安装的包，requirements.txt 为空', false, 3500);
+                return;
+            }
+            var blob = new Blob([data], {type: 'text/plain;charset=utf-8'});
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'requirements.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            msg('requirements.txt 已导出', true, 1800);
+        }).catch(function () {
+            msg('导出失败，请检查网络', false);
+        }).finally(function () {
+            $btn.prop('disabled', false)
+                .html('<i class="fa fa-download"></i> 导出 requirements.txt');
+        });
+    });
+
+    // 卸载：确认后同步执行
+    $(document).on('click', '.btn-uninstall', function () {
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定卸载包「' + name + '」吗？', {icon: 3, title: '确认卸载'}, function (index) {
+                layer.close(index);
+                var loadIdx = layer.msg('正在卸载，请稍候...', {
+                  icon: 16,
+                  shade: [0.3, '#000'],   // 遮罩
+                  shadeClose: false,
+                  time: 0,                // 不自动关闭，必须手动关
+                  scrollbar: false        // 加载期间锁定滚动条
+                });
+
+                $.post(API_UNINSTALL, {package: name, csrfmiddlewaretoken: CSRF}).done(function (res) {
+                    layer.close(loadIdx);
+                    if (res && res.success) {
+                        msg(res.message || '卸载成功', true, 1800);
+                        loadList();
+                    } else {
+                        msg((res && res.message) || '卸载失败', false, 3500);
+                    }
+                }).fail(function () {
+                    layer.close(loadIdx);
+                    msg('请求失败，请检查网络', false);
+                });
+            });
+        });
+    });
+
+    loadList();
+});
+</script>
+{% endblock %}

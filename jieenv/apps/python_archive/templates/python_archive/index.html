@@ -1,0 +1,378 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card card-outline card-info">
+    <div class="card-header p-2">
+        <div class="card-title">
+            <a href="{% url 'python_archive:version_list' %}" class="btn btn-success btn-sm">
+                <i class="fas fa-plus"></i> 安装
+            </a>
+            <button type="button" class="btn btn-success btn-sm" id="btn-import-installed">
+                <i class="fas fa-file-import"></i> 导入
+            </button>
+        </div>
+        <div class="card-tools">
+            <a href="{% url 'python_archive:settings' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="fa fa-cog"></i> 设置
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+<table class="table table-striped table-hover mb-0" style="table-layout:fixed;min-width:700px">
+    <colgroup>
+        <col style="width:22%">
+        <col style="width:80px">
+        <col style="width:70px">
+        <col style="width:90px">
+        <col>
+        <col style="width:100px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th style="width:22%">名称</th>
+            <th style="width:80px">版本</th>
+            <th style="width:60px">PATH</th>
+            <th style="width:70px">虚拟环境</th>
+            <th>解释器路径</th>
+            <th class="text-right" style="width:100px">操作</th>
+        </tr>
+    </thead>
+     <tbody id="installed-tbody">
+        {% for item in installed %}
+        <tr>
+            <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ item.name }}">
+                {% if item.locked %}<i class="fa fa-lock text-warning mr-1" title="已锁定（禁止卸载/删除）"></i>{% endif %}<b>{{ item.name }}</b>
+            </td>
+            <td>
+                <span title="{{ item.version }}">{{ item.version }}</span>
+            </td>
+            <td>{% if item.is_path_default %}<b class="text-success">默认</b>{% else %}-{% endif %}</td>
+            <td>
+                {% if item.venv_count > 0 %}
+                <a href="{% url 'python_archive:venv_list' item.id %}" class="badge badge-primary" style="text-decoration:none">
+                    {{ item.venv_count }}
+                </a>
+                {% else %}
+                <span class="text-muted">-</span>
+                {% endif %}
+            </td>
+            <td style="overflow:hidden">
+                <div class="d-flex align-items-center flex-wrap" style="gap:4px">
+                    <button type="button" class="btn btn-outline-secondary btn-xs act-open-dir"
+                            data-dir="{{ item.exe_dir }}" title="打开所在目录">
+                        <i class="far fa-folder-open"></i></button>
+                    <button type="button" class="btn btn-outline-secondary btn-xs act-copy-path"
+                            data-path="{{ item.python_exe }}" title="复制解释器路径">
+                        <i class="far fa-copy"></i></button>
+                    <button type="button" class="btn btn-outline-secondary btn-xs act-open-terminal"
+                            data-dir="{{ item.exe_dir }}" title="在该目录打开命令行">
+                        <i class="fa fa-terminal"></i></button>
+                </div>
+                <code class="text-truncate d-block" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ item.python_exe }}">{{ item.python_exe }}</code>
+            </td>
+            <td class="text-right">
+                <div class="dropdown d-inline-block">
+                    <button type="button" class="btn btn-light btn-sm dropdown-toggle"
+                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        操作
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-right">
+                        <a class="dropdown-item"
+                           href="{% url 'python_archive:venv_list' item.id %}">
+                            <i class="fa fa-cubes"></i> 虚拟环境
+                        </a>
+                        <a class="dropdown-item"
+                           href="{% url 'python_archive:pip_list' item.id %}">
+                            <i class="fa fa-puzzle-piece"></i> 包管理
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <button type="button" class="dropdown-item act-add-path"
+                                data-id="{{ item.id }}"><i class="fas fa-plus-circle"></i> 设为环境变量默认</button>
+                        <button type="button" class="dropdown-item act-rename"
+                                data-id="{{ item.id }}"><i class="fa fa-edit"></i> 修改名称</button>
+                        <button type="button" class="dropdown-item act-toggle-lock"
+                                data-id="{{ item.id }}"
+                                data-locked="{{ item.locked|yesno:'true,false' }}">
+                            <i class="fa {{ item.locked|yesno:'fa-lock,fa-unlock' }}"></i>
+                            {{ item.locked|yesno:'解锁记录,锁定记录' }}
+                        </button>
+                        <div class="dropdown-divider"></div>
+                        <button type="button" class="dropdown-item act-uninstall-gui {{ item.locked|yesno:'disabled,' }}"
+                                data-id="{{ item.id }}" data-name="{{ item.name }}"
+                                data-locked="{{ item.locked|yesno:'true,false' }}"
+                                data-venv-count="{{ item.venv_count }}"
+                                {{ item.locked|yesno:'disabled,' }}>
+                                <span class="text-danger"><i class="fa fa-trash"></i> 卸载</span>
+                        </button>
+                        <button type="button" class="dropdown-item act-del-record {{ item.locked|yesno:'disabled,' }}"
+                                data-id="{{ item.id }}"
+                                data-locked="{{ item.locked|yesno:'true,false' }}"
+                                data-venv-count="{{ item.venv_count }}"
+                                {{ item.locked|yesno:'disabled,' }}><i class="fa fa-eraser"></i> 从列表移除
+                        </button>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">暂无已安装版本</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var CSRF = $('input[name=csrfmiddlewaretoken]').val();
+    var STRICT_UNINSTALL_CHECK = {{ strict_uninstall_check|yesno:"true,false" }};
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    function postAndReload(url, data, reloadOnSuccess) {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+            data.csrfmiddlewaretoken = CSRF;
+            $.post(url, data).done(function (res) {
+                layer.close(loadIdx);
+                if (res && res.success) {
+                    layer.msg(res.message || '操作完成', {icon: 1, time: 2000}, function () {
+                        if (reloadOnSuccess !== false) { location.reload(); }
+                    });
+                } else {
+                    layer.msg((res && res.message) || '操作失败', {icon: 2, time: 3500});
+                }
+            }).fail(function () {
+                layer.close(loadIdx);
+                layer.msg('请求失败，请检查网络', {icon: 2, time: 3000});
+            });
+        });
+     }
+
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        var defer = $.Deferred();
+        var $t = $('<textarea>').val(text).css({position: 'fixed', opacity: 0}).appendTo('body');
+        $t[0].select();
+        try {
+            document.execCommand('copy') ? defer.resolve() : defer.reject();
+        } catch (e) {
+            defer.reject();
+        }
+        $t.remove();
+        return defer.promise();
+    }
+
+    {# ── 解释器路径图标按钮 ── #}
+    $(document).on('click', '.act-open-dir', function () {
+        postAndReload('{% url "jiecore:api_fs_open_dir" %}',
+            {path: $(this).data('dir')}, false);
+    });
+
+    $(document).on('click', '.act-copy-path', function () {
+        var path = $(this).data('path');
+        copyText(path).then(
+            function () { msg('已复制: ' + path, true); },
+            function () { msg('复制失败，请手动复制', false); });
+    });
+
+    $(document).on('click', '.act-open-terminal', function () {
+        postAndReload('{% url "python_archive:api_open_terminal" %}',
+            {path: $(this).data('dir')}, false);
+    });
+
+    {# ── 导入按钮 ── #}
+    $('#btn-import-installed').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 Python 目录',
+            initialPath: '{{ default_install_dir|escapejs }}',
+            onSelect: function (folderPath) {
+                layui.use('layer', function () {
+                    var layer = layui.layer;
+                    var loadIndex = layer.load(2);
+                    $.post('{% url "python_archive:api_import_installed" %}', {
+                        folder_path: folderPath,
+                        csrfmiddlewaretoken: CSRF
+                    }).done(function (res) {
+                        layer.close(loadIndex);
+                        if (res && res.success) {
+                            layer.msg(res.message || '导入成功', {icon: 1, time: 3000}, function () {
+                                location.reload();
+                            });
+                        } else {
+                            layer.msg((res && res.message) || '导入失败', {icon: 2, time: 3000});
+                        }
+                    }).fail(function () {
+                        layer.close(loadIndex);
+                        layer.msg('导入请求失败，请检查网络', {icon: 2, time: 3000});
+                    });
+                });
+            }
+        });
+    });
+
+    {# ── 操作下拉菜单 ── #}
+    $(document).on('click', '.act-add-path', function () {
+        var id = $(this).data('id');
+        postAndReload('{% url "python_archive:api_add_path" %}', {id: id});
+    });
+
+    $(document).on('click', '.act-rename', function () {
+        var id = $(this).data('id');
+        var curName = $(this).closest('tr').find('b').first().text();
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.prompt({
+                title: '请输入新名称',
+                formType: 0,
+                value: curName
+            }, function (newName, promptIndex) {
+                newName = $.trim(newName);
+                if (!newName) {
+                    layer.msg('名称不能为空', {icon: 2, time: 2000});
+                    return;
+                }
+                layer.close(promptIndex);
+                postAndReload('{% url "python_archive:api_rename" %}', {id: id, name: newName});
+            });
+        });
+    });
+
+    $(document).on('click', '.act-toggle-lock', function () {
+        var id = $(this).data('id');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var actionText = wasLocked ? '解锁' : '锁定';
+            var warnText = wasLocked
+                ? '解锁后将允许卸载或删除该解释器，确定要解锁吗？'
+                : '锁定后将禁止卸载或删除该解释器，确定要锁定吗？';
+            layer.confirm(warnText, {icon: 3, title: '确认' + actionText}, function (index) {
+                layer.close(index);
+                $.post('{% url "python_archive:api_toggle_lock" %}', {
+                    type: 'owner', id: id, csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (res && res.success) {
+                        layer.msg(res.message, {icon: 1, time: 1500}, function () { location.reload(); });
+                    } else {
+                        layer.msg((res && res.message) || '操作失败', {icon: 2, time: 3000});
+                    }
+                }).fail(function () {
+                    layer.msg('请求失败', {icon: 2, time: 3000});
+                });
+            });
+        });
+    });
+
+    $(document).on('click', '.act-del-record', function () {
+        var id = $(this).data('id');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        var vc = parseInt($(this).data('venv-count') || 0);
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            if (wasLocked) {
+                layer.alert('该解释器已锁定，请先解锁后再从列表移除',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            if (STRICT_UNINSTALL_CHECK && vc > 0) {
+                layer.alert('该解释器下还有 ' + vc + ' 个虚拟环境，请先全部删除后再从列表移除（或关闭「严格卸载检查」开关）',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            var msg = '确定要从列表移除吗？</br>只删除安装记录，不会卸载Python~';
+            if (vc > 0) {
+                msg += '</br></br><span class="text-danger"><b>⚠️ 注意：该解释器下还有 ' + vc + ' 个虚拟环境</b></span>'
+                    + '</br>• 移除后将同步清除这些虚拟环境的<b>管理记录</b>（本软件里看不到了）'
+                    + '</br>• 但<b>物理文件夹不会被删除</b>，可手动迁移或删除'
+                    + '</br>• 移除后这些 venv 的 pyvenv.cfg/home 会指向失效的解释器';
+            }
+            layer.confirm(msg, {icon: 3, title: '确认'}, function (index) {
+                layer.close(index);
+                $.get('{% url "python_archive:api_del_record" %}', {id: id}).done(function (res) {
+                    if (res && res.success) {
+                        layer.msg(res.message || '已删除', {icon: 1, time: 2000}, function () {
+                            location.reload();
+                        });
+                    } else if (res && res.blocked) {
+                        layer.alert(res.message, {icon: 5, title: '已拦截', btn: ['知道了']});
+                    } else {
+                        layer.msg((res && res.message) || '删除失败', {icon: 2, time: 3000});
+                    }
+                }).fail(function () {
+                    layer.msg('请求失败，请检查网络', {icon: 2, time: 3000});
+                });
+            });
+        });
+    });
+
+    $(document).on('click', '.act-uninstall-gui', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        var vc = parseInt($(this).data('venv-count') || 0);
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            if (wasLocked) {
+                layer.alert('该解释器已锁定，请先解锁后再卸载',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            if (STRICT_UNINSTALL_CHECK && vc > 0) {
+                layer.alert('该解释器下还有 ' + vc + ' 个虚拟环境，请先全部删除后再卸载（或关闭「严格卸载检查」开关）',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            var msg = '确定要卸载 ' + name + ' 吗？</br>将删除安装目录并清理环境变量。';
+            if (vc > 0) {
+                msg += '</br></br><span class="text-danger"><b>⚠️ 注意：该解释器下还有 ' + vc + ' 个虚拟环境</b></span>'
+                    + '</br>• 卸载后将同步清除这些虚拟环境的<b>管理记录</b>（本软件里看不到了）'
+                    + '</br>• 但<b>物理文件夹不会被删除</b>，可手动迁移或删除'
+                    + '</br>• 卸载后这些 venv 的 pyvenv.cfg/home 会指向失效的解释器';
+            }
+            layer.confirm(msg, {icon: 3, title: '确认卸载'}, function (index) {
+                layer.close(index);
+                $.post('{% url "python_archive:api_uninstall_gui" %}', {
+                    id: id,
+                    csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (res && res.blocked) {
+                        layer.alert(res.message, {icon: 5, title: '已拦截', btn: ['知道了']});
+                        return;
+                    }
+                    if (!res || !res.success || !res.task_id) {
+                        layer.msg((res && res.message) || '创建卸载任务失败', {icon: 2, time: 3000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '卸载 ' + name,
+                        taskId: res.task_id,
+                        width: '640px',
+                        height: '480px',
+                        logHeight: 320,
+                        onSuccess: function () {
+                            setTimeout(function () { location.reload(); }, 300);
+                        },
+                        onFail: function (result) {
+                            layer.msg((result && result.message) || '卸载失败', {icon: 2, time: 3500});
+                        }
+                    });
+                }).fail(function () {
+                    layer.msg('请求失败，请检查网络', {icon: 2, time: 3000});
+                });
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,417 @@
+{% extends "python_main/layout.html" %}
+
+{% block provider_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="card card-outline card-info">
+    <div class="card-header p-2">
+        <div class="card-title">
+            <a href="{% url 'python_installer:version_list' %}" class="btn btn-success btn-sm">
+                <i class="fas fa-plus"></i> 安装
+            </a>
+            <button type="button" class="btn btn-success btn-sm" id="btn-import-installed">
+                <i class="fas fa-file-import"></i> 探测已安装
+            </button>
+
+        </div>
+        <div class="card-tools">
+            <a href="{% url 'python_installer:settings' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="fa fa-cog"></i> 设置
+            </a>
+{% if py_available %}
+             <button type="button" class="btn btn-outline-danger btn-sm" id="btn-uninstall-py">
+                卸载 Python launcher
+            </button>
+{% endif %}
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th style="width:200px">版本</th>
+                    {% if py_available %}<th style="width:80px">PY</th>{% endif %}
+                    <th style="width:90px">PATH</th>
+                    <th style="width:100px">虚拟环境</th>
+                    <th>解释器路径</th>
+                    <th style="width:110px" class="text-right">操作</th>
+                </tr>
+            </thead>
+            <tbody id="installed-tbody">
+                {% for item in installed %}
+                <tr>
+                    <td>
+                        {% if item.locked %}<i class="fa fa-lock text-warning mr-1" title="已锁定（禁止卸载/删除）"></i>{% endif %}<b>Python-{{ item.version }}</b>
+                    </td>
+                    {% if py_available %}
+                    <td>{% if item.is_py_default %}<b class="text-success">默认</b>{% else %}-{% endif %}</td>
+                    {% endif %}
+                    <td>{% if item.is_path_default %}<b class="text-success">默认</b>{% else %}-{% endif %}</td>
+                    <td>
+                        {% if item.venv_count %}
+                            <a href="{% url 'python_installer:venv_list' item.id %}" class="badge badge-primary">
+                               {{ item.venv_count }}
+                            </a>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <button type="button" class="btn btn-outline-secondary btn-xs mr-1 act-open-dir"
+                                    data-dir="{{ item.exe_dir }}" title="打开所在目录">
+                                <i class="far fa-folder-open"></i></button>
+                            <button type="button" class="btn btn-outline-secondary btn-xs mr-1 act-copy-path"
+                                    data-path="{{ item.python_exe }}" title="复制解释器路径">
+                                <i class="far fa-copy"></i></button>
+                            <button type="button" class="btn btn-outline-secondary btn-xs mr-2 act-open-terminal"
+                                    data-dir="{{ item.exe_dir }}" title="在该目录打开命令行">
+                                <i class="fa fa-terminal"></i></button>
+                        </div>
+                        <code>{{ item.python_exe }}</code>
+                    </td>
+                    <td class="text-right">
+                        <div class="dropdown">
+                            <button type="button" class="btn btn-light btn-sm dropdown-toggle"
+                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                操作
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-right">
+                                {% if py_available %}
+                                <button type="button" class="dropdown-item act-set-py-default"
+                                        data-version="{{ item.version }}"
+                                        {% if item.is_py_default %}disabled{% endif %}>
+                                    <i class="fas fa-key"></i> 设置为py默认</button>
+                                {% endif %}
+                                <button type="button" class="dropdown-item act-add-path"
+                                        data-version="{{ item.version }}"
+                                        {% if item.is_path_default %}disabled{% endif %}>
+                                    <i class="fas fa-plus-circle"></i> 设为环境变量默认</button>
+                                <a class="dropdown-item"
+                                   href="{% url 'python_installer:venv_list' item.id %}">
+                                    <i class="fas fa-cubes"></i> 虚拟环境
+                                </a>
+                                <a class="dropdown-item" href="{% url 'python_installer:pip_list' item.id %}">
+                                    <i class="fa fa-puzzle-piece"></i> 包管理</a>
+{% if not py_available %}
+                                <button type="button" class="dropdown-item act-install-py-launcher"
+                                        data-version="{{ item.version }}">
+                                    <i class="fas fa-download"></i> 安装 py_launcher</button>
+{% endif %}
+                                <div class="dropdown-divider"></div>
+                                <button type="button" class="dropdown-item act-toggle-lock"
+                                        data-type="owner" data-id="{{ item.id }}">
+                                    <i class="fa {% if item.locked %}fa-lock{% else %}fa-unlock{% endif %}"></i>
+                                    {% if item.locked %}解锁{% else %}锁定{% endif %}
+                                </button>
+                                <button type="button" class="dropdown-item act-uninstall-gui"
+                                        data-version="{{ item.version }}"
+                                        data-locked="{% if item.locked %}true{% else %}false{% endif %}"
+                                        data-venv-count="{{ item.venv_count }}"
+                                        {% if item.locked %}disabled{% endif %}>
+                                    <span class="text-danger"><i class="fa fa-trash"></i> 卸载</span></button>
+                                <button type="button" class="dropdown-item act-del-record"
+                                        data-version="{{ item.version }}"
+                                        data-locked="{% if item.locked %}true{% else %}false{% endif %}"
+                                        data-venv-count="{{ item.venv_count }}"
+                                        {% if item.locked %}disabled{% endif %}>
+                                    <i class="fas fa-eraser"></i> 从列表移除</button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="{% if py_available %}7{% else %}6{% endif %}" class="text-center text-muted py-4">暂无已安装版本</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# 卸载确认弹窗内容 #}
+<div id="uninstall-form" style="display:none; padding:20px;">
+    <p id="uninstall-tip" class="text-muted"></p>
+    <div class="custom-control custom-checkbox">
+        <input type="checkbox" class="custom-control-input" id="opt-remove-leftovers" checked>
+        <label class="custom-control-label" for="opt-remove-leftovers">卸载后删除安装目录遗留文件</label>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var CSRF = $('input[name=csrfmiddlewaretoken]').val();
+    var STRICT_UNINSTALL_CHECK = {{ strict_uninstall_check|yesno:"true,false" }};
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    function postAndReload(url, data, reloadOnSuccess) {
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIdx = layer.load(2, {shade: [0.3, '#000']});
+            data.csrfmiddlewaretoken = CSRF;
+            $.post(url, data).done(function (res) {
+                layer.close(loadIdx);
+                if (res && res.success) {
+                    layer.msg(res.message || '操作完成', {icon: 1, time: 2000}, function () {
+                        if (reloadOnSuccess !== false) { location.reload(); }
+                    });
+                } else {
+                    layer.msg((res && res.message) || '操作失败', {icon: 2, time: 3500});
+                }
+            }).fail(function () {
+                layer.close(loadIdx);
+                layer.msg('请求失败，请检查网络', {icon: 2, time: 3000});
+            });
+        });
+     }
+
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        var defer = $.Deferred();
+        var $t = $('<textarea>').val(text).css({position: 'fixed', opacity: 0}).appendTo('body');
+        $t[0].select();
+        try {
+            document.execCommand('copy') ? defer.resolve() : defer.reject();
+        } catch (e) {
+            defer.reject();
+        }
+        $t.remove();
+        return defer.promise();
+    }
+
+    $('#btn-import-installed').on('click', function () {
+        var $btn = $(this);
+        var $icon = $btn.find('i');
+
+        function resetBtn() {
+            $btn.prop('disabled', false);
+            $icon.removeClass('fa-spinner fa-spin').addClass('fa-file-import');
+        }
+
+        $btn.prop('disabled', true);
+        $icon.removeClass('fa-file-import').addClass('fa-spinner fa-spin');
+
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var loadIndex = layer.load(2);
+            $.post('{% url "python_installer:api_import_installed" %}', {
+                csrfmiddlewaretoken: CSRF
+            }).done(function (res) {
+                layer.close(loadIndex);
+                if (res && res.success) {
+                    layer.msg(res.message || '导入完成', {icon: 1, time: 2000}, function () {
+                        location.reload();
+                    });
+                } else {
+                    layer.msg((res && res.message) || '导入失败', {icon: 2, time: 3000});
+                    resetBtn();
+                }
+            }).fail(function () {
+                layer.close(loadIndex);
+                layer.msg('导入请求失败，请检查网络', {icon: 2, time: 3000});
+                resetBtn();
+            });
+        });
+    });
+
+    {#--卸载PY launcher---#}
+    $(document).on('click', '#btn-uninstall-py', function(){
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm(
+                '确定要卸载 Python launcher 吗？',
+                {icon: 3, title: '卸载确认'}, function (index) {
+                layer.close(index);
+                getAndReload('{% url "python_installer:api_py_uninstall" %}', {});
+            });
+        });
+    });
+
+    {#-- 清理安装记录---#}
+    $(document).on('click', '.act-del-record', function(){
+        var version = $(this).data('version');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        var vc = parseInt($(this).data('venv-count') || 0);
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            if (wasLocked) {
+                layer.alert('该解释器已锁定，请先解锁后再移除记录', {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            if (STRICT_UNINSTALL_CHECK && vc > 0) {
+                layer.alert('该解释器下还有 ' + vc + ' 个虚拟环境，请先全部删除后再移除（或关闭「严格卸载检查」开关）',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            var confirmHtml = '确定要删除吗？</br>只删除安装记录，不会卸载Python~';
+            if (vc > 0) {
+                confirmHtml += '</br></br><span class="text-danger"><b>⚠️ 归属的 ' + vc + ' 个虚拟环境记录也将被清除</b></span>';
+            }
+            layer.confirm(confirmHtml,
+                {icon: 3, title: '确认'}, function (index) {
+                layer.close(index);
+                getAndReload('{% url "python_installer:api_del_record" %}', {version: version});
+            });
+        });
+    })
+
+    {# ── 解释器路径图标按钮 ── #}
+    $(document).on('click', '.act-open-dir', function () {
+        postAndReload('{% url "jiecore:api_fs_open_dir" %}',
+            {path: $(this).data('dir')}, false);
+    });
+
+    $(document).on('click', '.act-copy-path', function () {
+        var path = $(this).data('path');
+        copyText(path).then(
+            function () { msg('已复制: ' + path, true); },
+            function () { msg('复制失败，请手动复制', false); });
+    });
+
+    $(document).on('click', '.act-open-terminal', function () {
+        postAndReload('{% url "python_installer:api_open_terminal" %}',
+            {path: $(this).data('dir')}, false);
+    });
+
+    {# ── 操作下拉菜单 ── #}
+    $(document).on('click', '.act-set-py-default', function () {
+        var version = $(this).data('version');
+        postAndReload('{% url "python_installer:api_set_py_default" %}', {version: version});
+    });
+
+    $(document).on('click', '.act-add-path', function () {
+        var version = $(this).data('version');
+        postAndReload('{% url "python_installer:api_add_path" %}', {version: version});
+    });
+
+    $(document).on('click', '.act-install-py-launcher', function () {
+        var version = $(this).data('version');
+        var API_URL = '{% url "python_installer:api_install_py_launcher" %}';
+
+        function startTask(confirmed) {
+            layui.use('layer', function () {
+                var layer = layui.layer;
+                $.post(API_URL, {
+                    version: version,
+                    confirmed: confirmed ? '1' : '0',
+                    csrfmiddlewaretoken: CSRF
+                }).done(function (res) {
+                    if (!res || !res.success) {
+                        layer.msg((res && res.message) || '操作失败', {icon: 2, time: 3000});
+                        return;
+                    }
+                    // 后端提示需要下载且用户尚未确认 → 弹窗征求用户许可
+                    if (res.need_download) {
+                        layer.confirm(
+                            res.message || '本地无安装包缓存，需从网络下载，是否继续？',
+                            {icon: 3, title: '需要下载安装包'}, function (idx) {
+                                layer.close(idx);
+                                startTask(true);  // 用户确认，带 confirmed=1 重新请求
+                            });
+                        return;
+                    }
+                    // 已拿到 task_id → 打开任务日志弹窗
+                    if (!res.task_id) {
+                        layer.msg('创建任务失败', {icon: 2, time: 3000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '安装 py_launcher ' + version,
+                        taskId: res.task_id,
+                        width: '640px',
+                        height: '480px',
+                        logHeight: 320,
+                        onSuccess: function () {
+                            setTimeout(function () { location.reload(); }, 300);
+                        },
+                        onFail: function (result) {
+                            layer.msg((result && result.message) || '安装失败', {icon: 2, time: 3500});
+                        }
+                    });
+                }).fail(function () {
+                    layer.msg('请求失败，请检查网络', {icon: 2, time: 3000});
+                });
+            });
+        }
+
+        startTask(false);
+    });
+
+    $(document).on('click', '.act-toggle-lock', function () {
+        postAndReload('{% url 'python_installer:api_toggle_lock' %}', {
+            type: $(this).data('type'), id: $(this).data('id')
+        });
+    });
+
+    $(document).on('click', '.act-uninstall-gui', function () {
+        var version = $(this).data('version');
+        var wasLocked = $(this).data('locked') === true || $(this).data('locked') === 'true';
+        var vc = parseInt($(this).data('venv-count') || 0);
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            if (wasLocked) {
+                layer.alert('该解释器已锁定，请先解锁后再卸载', {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            if (STRICT_UNINSTALL_CHECK && vc > 0) {
+                layer.alert('该解释器下还有 ' + vc + ' 个虚拟环境，请先全部删除后再卸载（或关闭「严格卸载检查」开关）',
+                    {icon: 5, title: '已拦截', btn: ['知道了']});
+                return;
+            }
+            var tipHtml = '将启动 Python ' + version + ' 的官方卸载程序。</br>请根据卸载程序指引卸载。';
+            if (vc > 0) {
+                tipHtml += '</br></br><span class="text-danger"><b>⚠️ 该解释器下还有 ' + vc + ' 个虚拟环境</b></span>'
+                    + '</br>卸载后将同步清除这些虚拟环境的管理记录（目录不会删）';
+            }
+            $('#uninstall-tip').html(tipHtml);
+            $('#opt-remove-leftovers').prop('checked', true);
+            layer.open({
+                type: 1,
+                title: '确认卸载 Python ' + version,
+                content: $('#uninstall-form'),
+                area: ['460px', '250px'],
+                btn: ['卸载', '取消'],
+                yes: function (index) {
+                    var removeLeftovers = $('#opt-remove-leftovers').is(':checked') ? '1' : '0';
+                    layer.close(index);
+
+                    $.post('{% url "python_installer:api_uninstall_gui" %}', {
+                        version: version,
+                        remove_leftovers: removeLeftovers,
+                        csrfmiddlewaretoken: CSRF
+                    }).done(function (res) {
+                        if (!res || !res.success || !res.task_id) {
+                            layer.msg((res && res.message) || '创建卸载任务失败', {icon: 2, time: 3000});
+                            return;
+                        }
+                        JieTaskLog.open({
+                            title: '卸载 Python ' + version,
+                            taskId: res.task_id,
+                            width: '640px',
+                            height: '480px',
+                            logHeight: 320,
+                            onSuccess: function () {
+                                setTimeout(function () { location.reload(); }, 300);
+                            },
+                            onFail: function (result) {
+                                layer.msg((result && result.message) || '卸载失败', {icon: 2, time: 3500});
+                            }
+                        });
+                    }).fail(function () {
+                        layer.msg('请求失败，请检查网络', {icon: 2, time: 3000});
+                    });
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

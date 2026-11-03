@@ -1,0 +1,357 @@
+{% extends "layout_main.html" %}
+{% load static %}
+
+{% block css_code %}
+<style>
+  /* ── 项目概览 ── */
+  .projects-overview { margin-bottom: 24px; }
+  .projects-overview-title {
+    display: flex; align-items: center; gap: 14px;
+    font-size: .95rem; font-weight: 600; color: #495057;
+    padding-bottom: 7px; border-bottom: 2px solid #dee2e6;
+    margin-bottom: 12px;
+  }
+  .projects-overview-title i { margin-right: 6px; color: #6c757d; }
+  .projects-overview-title .header-actions { margin-left: auto; }
+  .projects-overview-title .header-actions .btn i { color: inherit; }
+
+  .stat-cards { display: flex; gap: 12px; margin-bottom: 16px; }
+  .stat-card {
+    flex: 1; min-width: 0;
+    border: 1px solid #e3e6ea; border-radius: 6px;
+    padding: 14px 16px; background: #fff; text-align: center;
+  }
+  .stat-card .stat-num {
+    font-size: 1.6rem; font-weight: 700; line-height: 1.1;
+  }
+  .stat-card .stat-label {
+    font-size: .82rem; color: #6c757d; margin-top: 3px;
+  }
+  .stat-card.stat-total { border-left: 3px solid #6c757d; }
+  .stat-card.stat-total .stat-num { color: #343a40; }
+  .stat-card.stat-ok { border-left: 3px solid #28a745; }
+  .stat-card.stat-ok .stat-num { color: #28a745; }
+  .stat-card.stat-degraded { border-left: 3px solid #ffc107; }
+  .stat-card.stat-degraded .stat-num { color: #d39e00; }
+  .stat-card.stat-missing { border-left: 3px solid #dc3545; }
+  .stat-card.stat-missing .stat-num { color: #dc3545; }
+
+  .recent-projects {
+    border: 1px solid #e3e6ea; border-radius: 6px; background: #fff;
+  }
+  .recent-projects .rp-row {
+    display: flex; align-items: center;
+    padding: 9px 14px; border-bottom: 1px solid #eee;
+    transition: background .15s;
+  }
+  .recent-projects .rp-row:last-child { border-bottom: none; }
+  .recent-projects .rp-row:hover { background: #f1f3f5; }
+  .rp-name {
+    flex: 0 0 180px; min-width: 0;
+    font-weight: 600; font-size: .88rem; color: #343a40;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .rp-meta { flex: 1; min-width: 0; font-size: .82rem; color: #6c757d; }
+  .rp-meta span { margin-right: 10px; }
+  .rp-meta .rp-providers { color: #495057; }
+  .rp-health { flex: 0 0 60px; text-align: center; }
+  .rp-time { flex: 0 0 130px; font-size: .8rem; color: #adb5bd; }
+  .rp-empty {
+    padding: 16px; text-align: center; color: #6c757d; font-size: .88rem;
+  }
+  .rp-loading { padding: 16px; text-align: center; color: #6c757d; }
+
+  /* ── 环境总览标题（居中 + 两侧横线） ── */
+  .overview-title {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 1.05rem; font-weight: 600; color: #343a40;
+    margin: 4px 0 20px;
+  }
+  .overview-title::before, .overview-title::after {
+    content: ''; flex: 1; border-top: 1px solid #ced4da;
+  }
+
+  /* ── 分类区块 ── */
+  .env-section { margin-bottom: 24px; }
+  .env-section-title {
+    font-size: .95rem; font-weight: 600; color: #495057;
+    padding-bottom: 7px; border-bottom: 2px solid #dee2e6;
+  }
+  .env-section-title i { margin-right: 6px; color: #6c757d; }
+  .env-rows {
+    border: 1px solid #e3e6ea; border-top: none;
+    border-radius: 0 0 6px 6px; background: #fff;
+  }
+
+  /* ── 环境摘要行：名称 | 字段区 | 管理按钮 ── */
+  .env-row {
+    display: flex; align-items: center;
+    padding: 9px 14px; border-bottom: 1px solid #eee;
+    transition: background .15s;
+  }
+  .env-row:last-child { border-bottom: none; }
+  .env-row:hover { background: #f1f3f5; }
+  .env-row-name {
+    flex: 0 0 220px; min-width: 0;
+    display: flex; align-items: center;
+    font-weight: 600; font-size: .9rem; color: #343a40;
+  }
+  .env-row-name i { margin-right: 8px; width: 18px; text-align: center; }
+  .env-row-fields { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; row-gap: 2px; }
+  .env-field { padding: 0 16px; border-left: 1px solid #e3e6ea; font-size: .86rem; }
+  .env-field:first-child { padding-left: 0; border-left: none; }
+  .env-field .field-label { color: #6c757d; margin-right: 4px; }
+  .env-row-manage { flex: 0 0 auto; margin-left: 12px; }
+  .env-row-manage .btn i { font-size: .6rem; vertical-align: middle; }
+
+  /* ── 最近操作 ── */
+  .op-table td, .op-table th { font-size: .88rem; vertical-align: middle; }
+  .op-table .op-time { white-space: nowrap; color: #6c757d; width: 160px; }
+  .op-table .op-result { width: 70px; text-align: center; }
+  .op-detail-btn { cursor: pointer; color: #007bff; text-decoration: underline; font-size: .8rem; }
+  .op-detail-btn:hover { color: #0056b3; }
+  .op-detail-content { white-space: pre-wrap; word-break: break-all; font-size: 13px; line-height: 1.6; max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 12px; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+{# ── 项目概览 ── #}
+<div class="projects-overview">
+  <div class="projects-overview-title">
+    <i class="fa-solid fa-diagram-project"></i> 项目概览
+    <span class="header-actions">
+      <a href="{% url 'project_mgmt:index' %}" class="btn btn-xs btn-outline-primary">
+        <i class="fa-solid fa-list"></i> 查看全部
+      </a>
+      <a href="{% url 'project_mgmt:create_wizard' %}" class="btn btn-xs btn-success ml-1">
+        <i class="fas fa-plus"></i> 新建项目
+      </a>
+    </span>
+  </div>
+  <div id="projects-stats">
+    <div class="rp-loading">
+      <i class="fas fa-spinner fa-spin mr-1"></i>加载中...
+    </div>
+  </div>
+</div>
+
+{# ── 环境总览（异步加载，分类与行字段均由钩子数据驱动） ── #}
+<div id="env-sections">
+  <div class="text-center text-muted py-4">
+    <i class="fas fa-spinner fa-spin mr-1"></i>加载中...
+  </div>
+</div>
+
+{# ── 最近操作 ── #}
+
+  <div class="card-header p-1">
+        <div class="d-flex justify-content-between">
+          <h3 class="card-title text-sm text-bold"><i class="fas fa-history mr-1"></i> 最近操作</h3>
+          <a href="{% url 'jiecore:operation_log_list' %}" class="btn btn-xs btn-outline-secondary">
+                <i class="fas fa-list mr-1"></i>查看所有
+          </a>
+        </div>
+{##}
+{#    <h3 class="card-title"></h3>#}
+{#    <div class="card-tools">#}
+{##}
+{#    </div>#}
+  </div>
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover op-table table-sm mb-0">
+      <thead class="thead-light">
+        <tr>
+          <th class="op-time">时间</th>
+          <th>操作描述</th>
+          <th class="op-result">结果</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for op in recent_operations %}
+        <tr>
+          <td class="op-time">{{ op.created_at }}</td>
+          <td>
+            {{ op.action }}
+            {% if op.detail %}
+                <span class="op-detail-btn" onclick="showOpDetail({{ op.id }})">[查看详情]</span>
+            {% endif %}
+          </td>
+          <td class="op-result">
+            {% if op.success %}
+              <span class="badge badge-success">成功</span>
+            {% else %}
+              <span class="badge badge-danger">失败</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="3" class="text-center text-muted py-3">暂无操作记录</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+// ── 异步加载项目概览 ──
+(function() {
+  var apiUrl = '{% url "mainapp:api_home_projects_stats" %}';
+
+  function healthBadge(state) {
+    var map = {
+      'OK': ['badge badge-success', '正常'],
+      'DEGRADED': ['badge badge-warning', '异常'],
+      'MISSING': ['badge badge-danger', '缺失'],
+    };
+    var m = map[state] || ['badge badge-secondary', state || '未知'];
+    return '<span class="' + m[0] + '">' + m[1] + '</span>';
+  }
+
+  function render(data) {
+    var total = data.total || 0;
+    var ok = data.ok || 0;
+    var degraded = data.degraded || 0;
+    var missing = data.missing || 0;
+    var recent = data.recent || [];
+
+    var html = '';
+    html += '<div class="stat-cards">';
+    html +=   '<div class="stat-card stat-total"><div class="stat-num">' + total + '</div><div class="stat-label">项目总数</div></div>';
+    html +=   '<div class="stat-card stat-ok"><div class="stat-num">' + ok + '</div><div class="stat-label">正常</div></div>';
+    html +=   '<div class="stat-card stat-degraded"><div class="stat-num">' + degraded + '</div><div class="stat-label">异常</div></div>';
+    html +=   '<div class="stat-card stat-missing"><div class="stat-num">' + missing + '</div><div class="stat-label">缺失组件</div></div>';
+    html += '</div>';
+
+    if (total === 0) {
+      html += '<div class="rp-empty"><i class="fa-solid fa-circle-info"></i> 暂无项目，点击右上角"新建项目"开始。</div>';
+    } else {
+      html += '<div class="recent-projects">';
+      if (recent.length === 0) {
+        html += '<div class="rp-empty">暂无项目记录。</div>';
+      } else {
+        recent.forEach(function(p) {
+          html += '<div class="rp-row">';
+          html +=   '<div class="rp-name" title="' + p.name + '">' + (p.name || '(未命名)') + '</div>';
+          html +=   '<div class="rp-meta">';
+          html +=     '<span title="' + (p.project_dir || '') + '">' + (p.project_dir || '-') + '</span>';
+          html +=   '</div>';
+          html +=   '<div class="rp-health">' + healthBadge(p.health) + '</div>';
+          html +=   '<div class="rp-time">' + (p.created_at || '') + '</div>';
+          html += '</div>';
+        });
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
+  fetch(apiUrl)
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      document.getElementById('projects-stats').innerHTML = render(data);
+    })
+    .catch(function(err) {
+      console.error('加载项目概览失败:', err);
+      document.getElementById('projects-stats').innerHTML =
+        '<div class="rp-empty"><i class="fa-solid fa-exclamation-triangle text-warning"></i> 加载失败</div>';
+    });
+})();
+
+// 操作日志详情弹窗（通过 API 查询详情内容）
+var _opDetailUrlTpl = '{% url "jiecore:api_op_log_detail" log_id=0 %}';
+function showOpDetail(id) {
+  layui.use('layer', function() {
+    var layer = layui.layer;
+    var loadIdx = layer.load(2, {shade: [0.3, '#fff']});
+    $.get(_opDetailUrlTpl.replace('/0/', '/' + id + '/')).done(function(res) {
+      layer.close(loadIdx);
+      if (res && res.success) {
+        var html = '<div class="op-detail-content">' +
+          res.detail.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        layer.open({
+          type: 1,
+          title: '操作详情 - ' + res.action,
+          area: ['500px', 'auto'],
+          content: html,
+          btn: ['关闭'],
+          yes: function(index) { layer.close(index); }
+        });
+      } else {
+        layer.msg((res && res.message) || '查询失败', {icon: 2, time: 3000});
+      }
+    }).fail(function() {
+      layer.close(loadIdx);
+      layer.msg('请求失败', {icon: 2, time: 3000});
+    });
+  });
+}
+
+// 异步加载环境总览：行字段（fields: [{label, value}]）由各应用钩子自行提供，前端只做通用渲染
+(function() {
+  var apiUrl = '{% url "mainapp:api_home_environments" %}';
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+      return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+    });
+  }
+
+  // 单个字段单元格：有 label 显示“label: value”，否则只显示 value
+  function renderField(f) {
+    return '<div class="env-field">' +
+      (f.label ? '<span class="field-label">' + esc(f.label) + ':</span>' : '') +
+      '<span class="field-value">' + esc(f.value || '-') + '</span></div>';
+  }
+
+  // 单个环境摘要行：名称 | 字段区 | 管理按钮
+  function renderEnv(env) {
+    var fields = env.fields || [];
+    var html = '<div class="env-row">';
+    html += '<div class="env-row-name"><i class="' + esc(env.icon) + '"' +
+      (env.icon_color ? ' style="color:' + esc(env.icon_color) + '"' : '') + '></i>' +
+      esc(env.name) + '</div>';
+    html += '<div class="env-row-fields">' +
+      (fields.length ? fields.map(renderField).join('')
+                     : '<div class="env-field"><span class="field-value">-</span></div>') +
+      '</div>';
+    if (env.manage_url) {
+      html += '<div class="env-row-manage"><a href="' + esc(env.manage_url) +
+        '" class="btn btn-xs btn-outline-primary">' + esc(env.manage_label || '管理') +
+        ' <i class="fas fa-chevron-right"></i></a></div>';
+    }
+    return html + '</div>';
+  }
+
+  // 分类区块：标题 + 行列表
+  function renderCategory(cat) {
+    return '<div class="env-section">' +
+      '<div class="env-section-title"><i class="' + esc(cat.icon) + '"></i>' + esc(cat.name) + '</div>' +
+      '<div class="env-rows">' + (cat.envs || []).map(renderEnv).join('') + '</div></div>';
+  }
+
+  fetch(apiUrl)
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var categories = data.categories || [];
+      document.getElementById('env-sections').innerHTML = categories.length
+        ? categories.map(renderCategory).join('')
+        : '<div class="card"><div class="card-body text-center text-muted py-4">' +
+          '<i class="fas fa-box-open fa-2x mb-2 d-block"></i>' +
+          '尚未安装任何环境应用。</div></div>';
+    })
+    .catch(function(err) {
+      console.error('加载环境数据失败:', err);
+      document.getElementById('env-sections').innerHTML =
+        '<div class="text-center text-muted py-4">' +
+        '<i class="fas fa-exclamation-triangle text-warning mr-1"></i>加载失败</div>';
+    });
+})();
+</script>
+{% endblock %}

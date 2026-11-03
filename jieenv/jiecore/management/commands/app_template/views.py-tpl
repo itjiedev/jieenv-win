@@ -1,0 +1,66 @@
+"""
+{{ app_name }} 视图层
+
+页面视图和 JSON API 定义在此文件中。
+所有业务视图都应继承 jiecore.views.AppMixin 以支持菜单高亮。
+"""
+import logging
+
+from django.views.generic.base import TemplateView
+from django.views.decorators.http import require_GET, require_POST
+from django.http import JsonResponse
+
+from jiecore.views import AppMixin
+
+logger = logging.getLogger(__name__)
+
+
+# ── 菜单高亮 Mixin（所有本应用视图继承此 Mixin）────────
+
+class {{ camel_case_app_name }}Mixin(AppMixin):
+    """菜单高亮 Mixin，设置当前应用的菜单ID"""
+    parent_menu_id = '{{ app_name }}'
+    menu_id = '{{ app_name }}'
+
+
+# ── 页面视图 ─────────────────────────────────────────
+
+class IndexView({{ camel_case_app_name }}Mixin, TemplateView):
+    """首页"""
+    template_name = '{{ app_name }}/index.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_title'] = '{{ app_name }}'
+        return context
+
+
+# ── 扩展钩子（作为宿主应用时取消注释）────────────────
+# 如果本应用需要允许其他应用扩展功能，可参考以下示例：
+#
+# from jiecore.ext_hook_registry import call_hooks
+#
+# class DetailView({{ camel_case_app_name }}Mixin, TemplateView):
+#     """详情页 - 示例：作为宿主应用声明扩展点"""
+#     template_name = '{{ app_name }}/detail.html'
+#
+#     def get_context_data(self, **kwargs):
+#         context = super().get_context_data(**kwargs)
+#         # 调用扩展点，收集其他应用注册的处理器结果
+#         context['ext_actions'] = call_hooks(
+#             '{{ app_name }}.detail.actions',  # 扩展点名称
+#             context={'item_id': self.kwargs.get('item_id')}
+#         )
+#         return context
+#
+# 本应用声明的扩展点（供其他应用参考）：
+#   {{ app_name }}.detail.actions  - 详情页操作区，处理器应返回:
+#       {'label': '按钮文字', 'url': '/跳转地址', 'icon': 'fa-icon-name'}
+
+
+# ── JSON API ─────────────────────────────────────────
+
+# @require_GET
+# def api_example(request):
+#     """示例 API"""
+#     return JsonResponse({'success': True, 'data': []})

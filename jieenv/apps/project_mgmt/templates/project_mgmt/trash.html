@@ -1,0 +1,118 @@
+{% extends "layout_main.html" %}
+{% block page_title %}{{ page_title|default:"回收站" }}{% endblock %}
+
+{% block page_content %}
+<div class="card" id="trash-card">
+    <div class="card-header">
+        <div class="card-title">
+            <i class="fa-solid fa-trash-can"></i>
+            回收站
+            <span class="badge badge-secondary">{{ trash_items|length }}</span>
+        </div>
+        <div class="card-tools">
+            <a href="{% url 'project_mgmt:index' %}" class="btn btn-sm btn-primary">
+                <i class="fa-solid fa-arrow-left"></i> 返回项目列表
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-0" id="trash-list-body">
+        {% if trash_items %}
+        <table class="table table-hover table-striped table-sm table-compact mb-0">
+            <thead>
+                <tr>
+                    <th style="width:40px;"></th>
+                    <th>项目</th>
+                    <th style="width:160px;">删除时间</th>
+                    <th style="width:100px;" class="text-center">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in trash_items %}
+                <tr data-project-id="{{ item.id }}">
+                    <td class="text-center"><i class="fa-solid fa-folder text-muted"></i></td>
+                    <td>
+                        <div class="font-weight-medium">{{ item.name }}</div>
+                        <small class="text-monospace text-muted">{{ item.project_dir|default:"-" }}</small>
+                    </td>
+                    <td class="text-muted small">{{ item.deleted_at|default:"-" }}</td>
+                    <td class="text-center">
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split"
+                                    data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                <i class="fa-solid fa-ellipsis-vertical"></i>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-right">
+                                <a class="dropdown-item btn-trash-restore" href="javascript:;">
+                                    <i class="fa-solid fa-rotate-left text-success mr-2"></i> 恢复项目
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item btn-trash-permanent text-danger" href="javascript:;">
+                                    <i class="fa-solid fa-skull mr-2"></i> 永久删除
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <a class="dropdown-item btn-trash-remove-record text-muted" href="javascript:;" title="仅从回收站移除记录，不删除磁盘文件">
+                                    <i class="fa-solid fa-eraser mr-2"></i> 删除记录
+                                </a>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fa-solid fa-trash-can" style="font-size: 48px;"></i>
+            <p class="mt-2">回收站是空的</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+(function() {
+    $('.btn-trash-restore').on('click', function() {
+        var $tr = $(this).closest('tr');
+        var id = $tr.data('project-id');
+        layui.layer.confirm('确定恢复此项目吗？', {icon: 3, title: '恢复项目'}, function(confirmIdx) {
+            layui.layer.close(confirmIdx);
+            $.post('{% url "project_mgmt:api_trash_restore" %}', {project_id: id}, function(resp) {
+                if (resp.ok) {
+                    $tr.fadeOut('normal', function() {
+                        $(this).remove();
+                        if ($('tbody tr').length === 0) location.reload();
+                    });
+                } else {
+                    layui.layer.msg(resp.error || '恢复失败', {icon: 2});
+                }
+            }, 'json');
+        });
+    });
+
+    $('.btn-trash-permanent').on('click', function() {
+        var id = $(this).closest('tr').data('project-id');
+        window.location.href = '{% url "project_mgmt:permanent_delete_confirm" project_id="__ID__" %}'.replace('__ID__', id);
+    });
+
+    $('.btn-trash-remove-record').on('click', function() {
+        var $tr = $(this).closest('tr');
+        var id = $tr.data('project-id');
+        layui.layer.confirm('仅从回收站移除记录，不删除磁盘文件。\n确认继续？', {icon: 3, title: '删除记录'}, function(confirmIdx) {
+            layui.layer.close(confirmIdx);
+            $.post('{% url "project_mgmt:api_trash_remove_record" %}', {project_id: id}, function(resp) {
+                if (resp.ok) {
+                    $tr.fadeOut('normal', function() {
+                        $(this).remove();
+                        if ($('tbody tr').length === 0) location.reload();
+                    });
+                } else {
+                    layui.layer.msg(resp.error || '删除记录失败', {icon: 2});
+                }
+            }, 'json');
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "python_main/layout.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(function(){
+    var form  = layui.form;
+    var $ = layui.$;
+    var layer = layui.layer;
+    var util = layui.util;
+
+    util.on('lay-on', {
+        uninstall: function(){
+            var cleanup = $('#opt-cleanup').is(':checked') ? '1' : '0';
+            var tip = cleanup
+                ? '确定要开始卸载吗？卸载成功后将一并清理用户配置、插件和历史记录。'
+                : '确定要开始卸载吗？卸载程序弹出后请按提示操作。';
+            layer.confirm(tip, {icon: 3, title: '卸载确认'}, function(index){
+                layer.close(index);
+                // 启动 VSCode 卸载向导：后端登记 jiecore.tasks 后台任务并回传 task_id，
+                // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
+                $.post('{% url "python_main:api_vscode_uninstall" %}', {cleanup: cleanup}).done(function (res) {
+                    if (!res || !res.success) {
+                        layer.msg((res && res.message) || '启动卸载失败', {icon: 2, time: 4000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '卸载 VSCode',
+                        taskId: res.task_id,
+                        onSuccess: function () {
+                            window.location.href = "{% url 'python_main:dev_tools' %}";
+                        },
+                        onFail: function (result) {
+                            layer.alert((result && result.message) || '卸载失败', {icon: 2, title: null});
+                        }
+                    });
+                }).fail(function (xhr) {
+                    var msg;
+                    if (!xhr || !xhr.status) {
+                        msg = '无法连接后台服务，请确认服务仍在运行后重试';
+                    } else if (xhr.status === 403) {
+                        msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+                    } else {
+                        msg = '卸载请求失败（HTTP ' + xhr.status + '）';
+                    }
+                    layer.alert(msg, {icon: 2, title: null});
+                });
+            });
+        },
+    })
+})
+</script>
+{% endblock %}
+
+{% block provider_content %}
+{% if not vscode %}
+{% include 'include_messages.html' %}
+<div class="alert alert-danger">
+    没有找到 VSCode 的安装信息~
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header">
+        <div class="row">
+            <div class="col-md-1">
+                <img src="{% static 'python_main/vscode.svg'%}" style="width: 54px; height: 54px"/>
+            </div>
+            <div class="col-md-11 layui-font-18 text-bold">卸载 {{ vscode.DisplayName }}</div>
+        </div>
+    </div>
+<form method="post" class="layui-form">{% csrf_token %}
+    <div class="card-body">
+
+        <p class="mb-1">{{ vscode.DisplayName }}（{{ vscode.installTypeLabel }}）将从以下文件夹中卸载</p>
+        <p>{{ vscode.InstallLocation }}</p>
+        <p class="text-danger text-bold">请确保 VSCode 没有在启动状态。点击卸载将启动 VSCode 的卸载程序~</p>
+        <p class="text-primary text-bold">请根据弹出的卸载程序指引卸载~~</p>
+
+        <div class="custom-control custom-checkbox mt-3">
+            <input type="checkbox" class="custom-control-input" id="opt-cleanup" name="cleanup">
+            <label class="custom-control-label" for="opt-cleanup">卸载成功后清理用户配置</label>
+            <div class="text-muted small">
+                勾选后将在卸载完成时删除 %APPDATA%\Code 与 %USERPROFILE%\.vscode（设置、扩展等全部清除）。
+            </div>
+        </div>
+    </div>
+    <div class="card-footer">
+        <button type="button" class="btn btn-danger" lay-on="uninstall">卸载</button>
+        <a href="{% url 'python_main:vscode_detail' %}" class="btn btn-secondary float-right">取消</a>
+    </div>
+</form>
+</div>
+{% endif %}
+{% endblock %}

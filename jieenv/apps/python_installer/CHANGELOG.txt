@@ -1,0 +1,40 @@
+v1.17.0
+- provider_services.py verify_python 补 creationflags=0x08000000，
+  消除 30s 健康探测周期性闪黑窗
+----------------------------------------------------------------------
+v1.16.0
+- 删除本地 open_terminal 实现，改为 from jiecore.system_ops import open_terminal
+- api_open_terminal 新增 path_prepend 传参，将解释器目录前置到 PATH
+- api_venv_open_terminal 替换 os.startfile 为 jiecore.open_terminal，
+  新增 venv\Scripts PATH 前置 + activate_cmd 双重保险
+----------------------------------------------------------------------
+v1.15.0
+- 完整 provider 注册：新建 hooks.py 注册 tool.python_installer provider
+  · lifecycle 5 项：create(context_dict) / preflight(context_dict) / delete(kwargs) / verify(kwargs) / health(kwargs)
+  · capabilities 3 项：list_available_versions / list_sources / scan_project_env
+- 新建 provider_services.py：8 个 service 函数实现
+  · install_python / preflight_python_install / uninstall_python / verify_python
+  · list_available_python_versions / list_download_sources / scan_project_python_env
+- apps.py ready() 追加 6 个 register_service（原 2 → 8）
+- preflight 业务校验：版本已装阻断/警告、敏感目录拦截、下载源可达性探测
+----------------------------------------------------------------------
+v1.14.1
+- PipInstallVenvView 补 url_list() 方法（包安装完不跳回列表）+ 补 ctx['record'] 别名（模板 {{ record.version }} 显示空白）
+- 补 _terminal_cmd() 函数（虚拟环境"打开终端"报 NameError: 未定义 _terminal_cmd）
+- api_toggle_lock 后端参数从 kind/record_id/installed 改为 type/id/owner，与 archive 标准对齐；content.html 按钮属性 + JS 参数同步修正
+- api_venv_delete 参数 remove_files → delete_dir（默认值 '1'），删除实现改用 venv_utils.delete_venv，与 archive 对齐
+- api_venv_verify 改为调用 verify_venv_l2 并正确传 rec.get('venv_path','') 路径字符串（之前传 dict 导致 500 TypeError: not 'dict'），verify_l1/l2 两 API 均修正参数传递
+----------------------------------------------------------------------
+v1.14.0
+- 新增虚拟环境全链路管理（与 python_archive 功能对齐，统一 64-bit，无 arch 探测）
+- 新增 storage_venv.py 持久化模块：venvs.json，核心接口 list_venvs / get_venv_by_id / add_venv / update_venv / toggle_venv_lock / remove_venv / clear_by_owner / count_by_owner
+- 新增 venv_utils.py 核心操作：create_venv / import_venv / delete_venv / rename_venv + 两级验证 verify_venv_l1 / verify_venv_l2 + get_installed_packages
+- config.py 新增 VENVS_FILE、DEFAULT_VENV_ROOT、strict_uninstall_check；storage.py list_installed/add_installed 补 locked 字段，新增 toggle_lock
+- urls.py 新增 venv 页面路由（venv_list / pip_list_venv / pip_install_venv）和 8 个 venv JSON API + api_toggle_lock
+- views.py 新增 VenvListView / PipListVenvView / PipInstallVenvView + resolve_pip_env + 全部 venv API；ContentView 注入 venv_count + strict_uninstall_check；api_del_record / api_uninstall_gui 加 locked 拦截 + strict 检查 + 级联 clear_by_owner；_uninstall_gui_worker 成功后级联清除归属虚拟环境
+- content.html 主列表新增虚拟环境数量列、锁徽章；下拉菜单补全图标、新增虚拟环境入口、锁定/解锁按钮、锁定后卸载/移除禁用；JS 加 act-toggle-lock 处理
+- settings.html 配置合并为单卡片"应用设置"，新增严格卸载检查开关；api_settings_save 保存 strict_uninstall_check
+----------------------------------------------------------------------
+v1.13.2
+- 注册 call_service('python_installer', 'resolve_pip_env', ...)，提供 env_id → {python_exe, label} 解析服务
+- storage 加 _by_id_cache dict，get_installed_by_id 从磁盘 O(N) 变为内存 O(1)

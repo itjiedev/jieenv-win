@@ -1,0 +1,273 @@
+﻿<div class="binding-form card mb-3 {% if installed %}binding-installed{% elif is_disabled %}binding-disabled{% else %}binding-missing{% endif %}"
+     data-provider-key="{{ binding.provider_key }}">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+            <i class="{{ binding.icon|default:'fa-solid fa-puzzle-piece' }} text-primary mr-2"></i>
+            <span class="font-weight-bold">{{ binding.label|default:binding.provider_key }}</span>
+            {% if binding.template_default_hint %}
+            <span class="badge badge-info ml-2">{{ binding.template_default_hint }}</span>
+            {% endif %}
+            <code class="ml-2 text-muted small">{{ binding.provider_key }}</code>
+            {% if binding.depends_on %}
+            <span class="badge badge-light ml-2">
+                <i class="fa-solid fa-link"></i> 依赖:
+                {% for d in binding.depends_on %}{{ d }} {% endfor %}
+            </span>
+            {% endif %}
+        </div>
+        <div class="d-flex align-items-center">
+            {% if installed %}
+            <span class="badge badge-success mr-2">
+                <i class="fa-solid fa-check"></i> 已安装
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-primary binding-btn-edit">
+                <i class="fa-solid fa-pen-to-square"></i> <span class="btn-label">编辑</span>
+            </button>
+            {% elif is_disabled %}
+            <span class="badge badge-secondary">
+                <i class="fa-solid fa-pause"></i> 应用禁用
+            </span>
+            {% else %}
+            <span class="badge badge-danger">
+                <i class="fa-solid fa-triangle-exclamation"></i> 未安装
+            </span>
+            {% endif %}
+        </div>
+    </div>
+    {% if extra_embed %}
+        {% include extra_embed %}
+    {% endif %}
+    <div class="binding-error alert alert-danger py-2 mb-0 d-none" role="alert">
+        <i class="fa-solid fa-circle-exclamation mr-1"></i>
+        <span class="binding-error-msg"></span>
+    </div>
+    <div class="card-body py-3">
+        {% if installed and not no_options %}
+{% if config_fields %}
+<div class="mode-summary">
+    {% for field in config_fields %}
+    <div class="summary-row d-flex align-items-center py-1 border-bottom"
+         data-field-key="{{ field.key }}"
+         {% if field.key == 'use_venv' %}data-toggle-controls="venv_dir,system_site"{% endif %}>
+        <span class="summary-label text-muted small" style="min-width:110px;">
+            {{ field.label }}{% if field.required %}<span class="text-danger ml-1">*</span>{% endif %}
+        </span>
+        <span class="summary-value flex-grow-1 small"
+              data-field-key="{{ field.key }}"
+              data-field-type="{{ field.type }}"
+              data-ui-widget="{{ field.ui_widget|default:'' }}"
+              {% if field.type == 'select' and field.options %}data-options-json="{{ field.options|escapejs }}"{% endif %}
+              {% if field.type == 'checkbox' %}data-checked="{{ field.default|yesno:'true,false' }}"{% endif %}
+              {% if field.required %}data-required="1"{% endif %}
+              {% if field.ui_widget == 'dir_with_base' %}
+              data-dir-sub="{{ field.dir_sub|default:'.venv' }}"
+              data-dir-full="{{ field.default|default:'' }}"
+              {% endif %}
+              {% if field.required and not field.default %}data-state="warn"{% endif %}>
+            {% if field.type == 'select' %}
+                {% if field.default %}
+                    {% for opt in field.options %}
+                        {% if field.default == opt.value|default:opt %}
+                            {{ opt.label|default:opt }}
+                        {% endif %}
+                    {% endfor %}
+                {% elif field.required %}
+                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            {% elif field.type == 'checkbox' %}
+                {% if field.default %}
+                    <span class="text-success">使用 <i class="fa-solid fa-check"></i></span>
+                {% else %}
+                    <span class="text-muted">关闭</span>
+                {% endif %}
+            {% elif field.ui_widget == 'dir_with_base' %}
+                {% if field.required and not field.default %}
+                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
+                {% else %}
+                    <span class="font-weight-bold">{{ field.dir_sub|default:'.venv' }}</span>
+                    <small class="text-muted ml-2">{{ field.default|default:'' }}</small>
+                {% endif %}
+            {% elif field.type == 'password' %}
+                {% if field.default %}••••••{% elif field.required %}
+                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
+                {% else %}
+                    <span class="text-muted">未设置</span>
+                {% endif %}
+            {% else %}
+                {% if field.required and not field.default %}
+                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
+                {% else %}
+                    <span class="font-weight-bold">{{ field.default|default:"—" }}</span>
+                {% endif %}
+            {% endif %}
+        </span>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="mode-form" style="display:none;">
+<div class="row">
+    {% for field in config_fields %}
+    <div class="col-md-6">
+        <div class="form-group mb-2" data-field-key="{{ field.key }}"
+             {% if field.key == 'use_venv' %}data-toggle-fields="venv_dir,system_site"{% endif %}>
+            <label class="small mb-1" for="config_{{ binding.provider_key }}_{{ field.key }}">
+                {{ field.label }}{% if field.required %}<span class="text-danger">*</span>{% endif %}
+            </label>
+
+            {% if field.type == 'checkbox' %}
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input"
+                       id="config_{{ binding.provider_key }}_{{ field.key }}"
+                       name="config_{{ binding.provider_key }}_{{ field.key }}"
+                       {% if field.default %}checked{% endif %}
+                       {% if field.key == 'use_venv' %}data-is-toggle="1"{% endif %}>
+            </div>
+
+            {% elif field.type == 'password' %}
+            <input type="password" class="form-control form-control-sm"
+                   id="config_{{ binding.provider_key }}_{{ field.key }}"
+                   name="config_{{ binding.provider_key }}_{{ field.key }}"
+                   value="{{ field.default|default:'' }}"
+                   placeholder="{{ field.hint|default:'' }}">
+
+            {% elif field.type == 'number' %}
+            <input type="number" class="form-control form-control-sm"
+                   id="config_{{ binding.provider_key }}_{{ field.key }}"
+                   name="config_{{ binding.provider_key }}_{{ field.key }}"
+                   value="{{ field.default|default:'' }}"
+                   placeholder="{{ field.hint|default:'' }}">
+
+            {% elif field.type == 'select' %}
+            <select class="form-control form-control-sm"
+                    id="config_{{ binding.provider_key }}_{{ field.key }}"
+                    name="config_{{ binding.provider_key }}_{{ field.key }}">
+                {% for opt in field.options %}
+                <option value="{{ opt.value|default:opt }}" {% if field.default == opt.value|default:opt %}selected{% endif %}>
+                    {{ opt.label|default:opt }}
+                </option>
+                {% endfor %}
+            </select>
+
+            {% elif field.type == 'textarea' %}
+            <textarea class="form-control form-control-sm" rows="2"
+                      id="config_{{ binding.provider_key }}_{{ field.key }}"
+                      name="config_{{ binding.provider_key }}_{{ field.key }}"
+                      placeholder="{{ field.hint|default:'' }}">{{ field.default|default:'' }}</textarea>
+
+            {% elif field.ui_widget == 'dir_with_base' %}
+            <div class="dir-with-base" data-fpk="{{ binding.provider_key }}" data-field="{{ field.key }}">
+                <input type="hidden" class="dir-full-path"
+                       id="config_{{ binding.provider_key }}_{{ field.key }}"
+                       name="config_{{ binding.provider_key }}_{{ field.key }}"
+                       value="{{ field.default|default:'' }}">
+                <div class="input-group input-group-sm mb-1">
+                    <input type="text" class="form-control dir-sub-input"
+                           value="{{ field.dir_sub|default:'.venv' }}"
+                           placeholder="目录名">
+                </div>
+                <div class="input-group input-group-sm mb-1">
+                    <input type="text" class="form-control dir-base-input"
+                           value="{{ field.dir_base|default:'' }}"
+                           placeholder="基础目录（默认使用项目目录）">
+                    <div class="input-group-append">
+                        <button type="button" class="btn btn-outline-secondary dir-pick-btn" title="浏览...">
+                            <i class="fa-solid fa-folder-open"></i>
+                        </button>
+                    </div>
+                </div>
+                <small class="text-muted dir-full-preview"></small>
+            </div>
+
+            {% else %}
+            <input type="text" class="form-control form-control-sm"
+                   id="config_{{ binding.provider_key }}_{{ field.key }}"
+                   name="config_{{ binding.provider_key }}_{{ field.key }}"
+                   value="{{ field.default|default:'' }}"
+                   placeholder="{{ field.hint|default:'' }}"
+                   {% if field.default_from %}data-default-from="{{ field.default_from }}"{% endif %}>
+            {% endif %}
+
+            {% if field.hint %}
+            <small class="text-muted">{{ field.hint }}</small>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+</div>
+        {% else %}
+        <div class="text-muted small">此组件无需额外配置</div>
+        {% endif %}
+        {% elif installed and no_options %}
+        <div class="d-flex align-items-center flex-wrap">
+            <div class="flex-grow-1">
+                <div class="text-danger font-weight-bold mb-1">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                    {{ degrade_error }}
+                </div>
+            </div>
+            <div class="d-flex flex-wrap">
+                {% if disabled_contributors %}
+                    {% for c in disabled_contributors %}
+                    <button type="button" class="btn btn-sm btn-secondary btn-enable-provider mr-1"
+                            data-app-id="{{ c.app_name }}"
+                            data-label="{{ c.label }}"
+                            data-url="{% url 'appmanage:enable' app_name=c.app_name %}">
+                        <i class="fa-solid fa-toggle-on"></i> 启用 {{ c.label }}
+                    </button>
+                    {% endfor %}
+                {% endif %}
+                {% if missing_contributors %}
+                    {% for c in missing_contributors %}
+                    <button type="button" class="btn btn-sm btn-warning btn-install-provider mr-1"
+                            data-app-id="{{ c.app_name }}"
+                            data-label="{{ c.label }}"
+                            data-url="{% url 'appmanage:install' %}?app_name={{ c.app_name }}">
+                        <i class="fa-solid fa-download"></i> 安装 {{ c.label }}
+                    </button>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="d-flex align-items-center flex-wrap">
+            <div class="flex-grow-1">
+                {% if is_disabled %}
+                <div class="text-danger font-weight-bold mb-1">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                    应用 {{ owner_app|default:'该应用' }} 已禁用，请前往应用管理启用后使用。
+                </div>
+                {% else %}
+                <div class="text-danger font-weight-bold mb-1">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+                    需要先安装对应的扩展应用才能使用此组件。
+                </div>
+                {% endif %}
+            </div>
+            {% if is_disabled %}
+            <button type="button" class="btn btn-sm btn-secondary btn-enable-provider"
+                    data-app-id="{{ owner_app|default:binding.provider_key }}"
+                    data-label="{{ binding.label|default:binding.provider_key }}"
+                    data-url="{% url 'appmanage:enable' app_name=owner_app|default:binding.provider_key %}">
+                <i class="fa-solid fa-toggle-on"></i> 启用 {{ binding.label|default:owner_app }}
+            </button>
+            {% else %}
+            <button type="button" class="btn btn-sm btn-warning btn-install-provider"
+                    data-app-id="{{ owner_app|default:binding.provider_key }}"
+                    data-label="{{ binding.label|default:binding.provider_key }}"
+                    data-url="{% url 'appmanage:install' %}?app_name={{ owner_app|default:binding.provider_key }}">
+                <i class="fa-solid fa-download"></i> 安装 {{ binding.label|default:owner_app }}
+            </button>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if extra_actions_html %}
+            {% for ah in extra_actions_html %}
+            {{ ah|safe }}
+            {% endfor %}
+        {% endif %}
+    </div>
+</div>

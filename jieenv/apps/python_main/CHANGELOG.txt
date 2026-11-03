@@ -1,0 +1,291 @@
+﻿v1.21.0
+- runtime.python provider env_hints 补全「直接指定 Python 解释器」模式（use_venv=False）：
+  get_env_hints 新增 use_venv=False 分支，返回 PATH_prepend=[python_exe 所在目录]，
+  让终端打开后 python/pip 命令直接命中项目配置的解释器，无需 venv 激活
+- runtime.python lifecycle.verify 新增 use_venv 字段，venv_dir 改为非必填：
+  verify 阶段不再强制要求 venv 目录存在，直接指定解释器项目跳过 venv 校验
+- venv_utils.verify_venv 新增 use_venv 参数，use_venv=False 时直接返回 success=True，
+  避免非 venv 模式误报「缺少 pyvenv.cfg」
+----------------------------------------------------------------------
+v1.20.0
+- provider 聚合层自声明：hooks.py runtime.python provider 新增
+  contributor_name_prefix: "python" 字段，让 project_mgmt 动态识别贡献者
+  （不硬编码应用名，与 _list_python_versions() 的 list_services() 动态发现机制对齐）
+----------------------------------------------------------------------
+v1.19.0
+- 升级为 T2 领域聚合层（is_platform_fixed=True）：平台预置，用户无感
+- 实现菜单动态显隐：app_meta 内联 _has_child_apps() 判断 AppManager.get_enabled_apps() 中
+  有无依赖 python_main 的已启用应用，有则 viewname='python_main:index'，无则空串，
+  配合 menu_aggregator 现有过滤规则自动显隐；数据源来自 DB，禁用/启用瞬间生效
+----------------------------------------------------------------------
+v1.18.0
+- 修改聚合和勾子，向project_mgmt 提供数据
+----------------------------------------------------------------------
+v1.17.0
+- Phase 0 预埋（project_mgmt 实施基石）：
+  - 新增 venv_utils.py 精简工具层：create_venv / verify_venv（合并 L1+L2）/ remove_venv，
+    与 archive/installer 各自的 venv_utils.py 职责分离——python_main 是纯文件系统工具，
+    不依赖任何可选应用的 storage；create_venv 签名 (python_exe, venv_dir, ...) 与 archive 的
+    (install_dir, target_path, ...) 不同，符合骨架应用视角
+  - 新增 6 个 app_services：venv_utils 三函数 + detect_project_deps / scan_python_env /
+    create_venv_and_install，ready() 从 0 → 6
+  - 新增 ext_hooks.py：向 project_mgmt.runtime_providers 注册 Python 运行时提供者，
+    含完整 config_schema + detect/create/verify/rollback 四件套 service 元组；
+    python_main 作为骨架应用不注册 envs/clear_cache/pip_envs/home.environments 这些 Tab/缓存/
+    解析钩子（由 installer/archive 两个可选应用负责）
+----------------------------------------------------------------------
+v1.16.1
+- pip_envs 高频路径优化：_resolve_pip_env 改成 call_service 精确调用已知贡献者（python_installer, python_archive），失败时兜底 call_hooks 广播；加 @lru_cache(maxsize=256) 进程级去重
+----------------------------------------------------------------------
+v1.16.0
+- 新增 requirements.txt 导出（pip freeze）通用能力：
+  - pip_manager.py 新增 export_requirements(python_exe)，封装 pip freeze
+  - 通用 pip API 新增 api_pip_requirements_export（与既有 pip API 同模式，
+    env_id 定位目标环境，直接返回 Content-Disposition: attachment 文件下载）
+  - PipListViewMixin 的 get_pip_api_context 注入新 URL，贡献者应用
+    python_installer / python_archive 无需自己实现，包列表页直接获得导出按钮
+  - pip_list.html 新增"导出 requirements.txt"按钮：pywebview 桌面环境走
+    window.location.href 触发 WebView2 原生 SaveFileDialog（desktop.py 同步
+    开启 webview.settings['ALLOW_DOWNLOADS'] = True），非 pywebview 环境
+    走 fetch + Blob + 临时 a 标签下载，空环境有友好提示
+--------------------------------------------------------------------------
+v1.15.0
+- 移除 PyPI 包搜索功能：搜索需下载全量 PyPI 索引、元数据拉取缓慢且结果不可靠，
+  已由直接安装 + requirements.txt 导入安装取代；pip_dependencies 同步删除
+  pip-search-ex 依赖
+- 新增 requirements.txt 导入安装（三入口：上传文件 / 粘贴文本 / 选择本机文件）：
+  - requirements_parser.py 新增行级三分法解析（有效 / 忽略 / 无法识别）与本机
+    路径五项复检读取（存在 / 单文件 / .txt / ≤1MB / UTF-8 严格解码）
+  - 通用 pip API 新增 requirements parse / install 两个接口（env_id 定位目标
+    环境，与既有 pip API 同模式），安装走后台任务，任务日志头部输出解析摘要
+    （来源标识 / 有效清单 / 忽略明细 / 无法识别明细）
+  - 批量安装采用临时 requirements 文件 + 单次 pip install -r 会话（规避
+    Windows 32767 字符命令行上限），临时文件即用即删
+  - pip_install.html 新增导入卡片：三入口切换（最后操作生效）、解析预览确认
+    （仅展示有效条目"安装如下内容"，忽略 / 无法识别明细不进预览、仅记录于
+    任务日志；动态内容全量转义防 XSS）、JieTaskLog 实时日志与完成确认
+- 移除内容：pip/api/search 路由与 api_pip_search 视图、
+  pip_manager.search_packages 与 _relevance_key、pip_install.html 搜索输入行 /
+  搜索结果卡及全部相关 JS
+--------------------------------------------------------------------------
+v1.14.0
+- 将python的各个子应用的临时目录都设置到python_main下
+- 关闭python各应用分开清理钩子，设置统一的清理按钮，一键直接全部清理tmp/python_main下的文件
+--------------------------------------------------------------------------
+v1.13.0
+- 应用整体改名为 python_main：目录 apps/python → apps/python_main，Django
+  app_name（apps.py）、路由命名空间（urls.py 的 app_name）、app_meta 的 app_name、
+  菜单 menu_id 全部由 python 改为 python_main
+- 模板/静态命名空间由 python/ 改为 python_main/：templates、static 目录及所有
+  template_name、{% extends %}、{% static %}、{% url %} 引用同步更新
+- 数据/临时目录 APP_LABEL 改为 python_main（data/python_main、tmp/python_main），
+  原 data/python、tmp/python 目录已迁移
+- 宿主扩展点命名空间统一改为 python_main.*：python.envs / python.tools.tabs /
+  python.clear_cache / python.pip_envs → python_main.envs / .tools.tabs /
+  .clear_cache / .pip_envs（views.py 调用点同步更新）
+- 所有 reverse('python:*') 改为 reverse('python_main:*')
+- 同步适配贡献者应用 python_installer、python_archive 对本应用的 import、模板继承、
+  钩子注册名、依赖声明与菜单 parent_id
+- 同步更新应用开发文档 docs/python开发文档.md 中的全部旧标识符
+--------------------------------------------------------------------------
+v1.12.1
+- 移除 PyPI 源测速功能：PyPI 源的 simple index URL 测速仅测试索引页可达性，
+  不代表实际包文件（.whl/.tar.gz）下载可靠性（索引页与包文件由不同 CDN 托管），
+  测速结果给用户造成错误信心，实际 pip 安装仍可能失败
+- 移除 pypi_config.run_pypi_speed_test()、views.api_pypi_speed_test、
+  pypi/api/speed_test/ 路由、pypi_list.html 测速按钮和结果卡片
+--------------------------------------------------------------------------
+v1.12.0
+- PyPI 源管理页新增“测速”按钮：调用 jiecore.speed_test 通用测速模块对所有内置源和自定义源
+  执行下载速度测试，结果以表格展示（源名/状态/速度），最快源高亮标记
+- pypi_config.py 新增 run_pypi_speed_test() 函数
+- views.py 新增 api_pypi_speed_test 视图
+- urls.py 注册 pypi/api/speed_test/ 路由
+--------------------------------------------------------------------------
+v1.11.0
+- 新增通用 pip 包管理能力（宿主声明），任何贡献者应用只需注册 python.pip_envs
+  解析器即可复用完整的包列表 / 搜索 / 安装 / 升级 / 卸载功能：
+  - python.pip_envs 扩展点：贡献者返回 [{env_id, python_exe, label?}]，宿主按
+    env_id 匹配解释器路径；本应用不感知具体环境来源，实现跨应用解耦
+  - 通用 Pip API（均以 env_id 为路径参数，reverse 名 python:api_pip_*）：
+    api_pip_list（GET，合并已安装包与可升级标记 latest_version/upgradable）、
+    api_pip_search（POST，keyword）、api_pip_install（POST，package+version，
+    后台任务）、api_pip_upgrade（POST，packages 逗号分隔或单个 package，后台任务）、
+    api_pip_uninstall（POST，同步卸载）
+  - 页面 Mixin：PipListViewMixin（模板 python/pip_list.html，可覆写 url_install）
+    与 PipInstallViewMixin（模板 python/pip_install.html，可覆写 url_list），
+    均由 PipEnvMixin 提供 get_env_id / get_pip_api_context 注入 API 上下文
+- pip_manager.py 扩展：search_packages 在当前 runtime 解释器进程内直接调用已安装的
+  pip-search-ex 库（gather_packages）做「实时查找」——按名称匹配 + 命中项按需拉取
+  元数据；调用前把 start_cache_worker / start_background_cache_build 置为空操作，禁用
+  其默认的「全量缓存」（否则会在后台下载并持久化整个 PyPI ~73 万个包的元数据库，
+  Windows 下为进程内守护线程 + detached 子进程，既拖慢首次搜索又长期占用网络/磁盘）；
+  新增 list_outdated（pip list --outdated --format=json）、run_pip_stream（Popen
+  流式执行逐行回调）、install_package_stream、upgrade_packages_stream（批量升级）
+- search_packages 改为「按名称相关性」返回前 100 项：pip-search-ex 原按字母序返回并截断
+  到 200，模糊词（如 django）会先被数百个 xxx-django-yyy 占满窗口、把最相关的 Django
+  框架挤出结果；现改为自取 fetch_index 做名称子串匹配后按相关性排序（_relevance_key：
+  完全匹配 < 前缀 < 分隔段前缀 < 其余子串），仅对前 100 命中项并发拉取元数据；安装页
+  pip_install.html 结果表新增客户端分页（每页 20 条，带首尾页/省略号/上下页）
+- 修复打开「版本不同的已安装环境」包列表时报 "Error in sitecustomize ...
+  AssertionError: SRE module mismatch"、pip list 失败：服务进程（runtime python，常由
+  PyCharm 等 IDE 注入指向 runtime\Lib 的 PYTHONPATH）spawn 目标环境解释器时原样继承了
+  PYTHONPATH/PYTHONHOME，导致目标 python 加载 runtime 的标准库、re/_sre 版本错配；
+  _child_env()（原 _utf8_env）统一剔除 PYTHONHOME/PYTHONPATH/PYTHONSTARTUP 并强制 UTF-8，
+  _run_python 与 run_pip_stream 均改用它，list/outdated/install/upgrade/uninstall 全部受益
+- 安装 / 升级以后台任务执行（jiecore.tasks + run_in_thread），_pip_install_worker /
+  _pip_upgrade_worker 通过 append_log + set_progress 上报实时进度，前端用 JieTaskLog
+  黑底日志窗轮询展示；安装新包不再弹窗，改为跳转独立完整页面 pip_install.html
+- pip_dependencies 声明 pip-search-ex（PyPI 包搜索依赖）
+--------------------------------------------------------------------------
+v0.10.0
+- 顶部"清理缓存"按钮改为按当前激活子 Tab 派发：新增 python.clear_cache 扩展点，
+  贡献者应用可返回 {env_id, endpoint, label?, confirm_text?}，PythonMixin 会按 env_id
+  匹配到对应 env，并将当前激活 env 的清理配置注入模板上下文
+  active_clear_cache（url / label / confirm_text）；未注册或未激活子 Tab 时回退到
+  本应用默认接口 python:api_clear_cache（清空 tmp/python/），保持向后兼容
+- layout.html 中"清理缓存"按钮改为读取 data-url / data-confirm 属性发起请求，
+  文案与目标均可由子应用覆盖，不再硬编码 python:api_clear_cache
+- 新增应用级开发文档 apps/python/docs/python开发文档.md：因本次变更未修改 jiecore，
+  将 python 应用作为宿主声明的 3 个扩展点（python.envs / python.tools.tabs /
+  python.clear_cache）的契约、PythonMixin 注入的上下文、默认 API、贡献者接入
+  指南与参考实现（python_installer）集中记录在应用目录内，便于后续子应用开发者查阅
+--------------------------------------------------------------------------
+v0.9.0
+- 开发工具页新增 VSCode（Visual Studio Code）支持：探测本机是否已安装，并提供
+  启动 / 详情 / 重置 / 卸载 / 安装 全套功能，交互与日志弹窗沿用 PyCharm 的
+  jiecore.tasks + JieTaskLog 模式；dev_tools.html 的 VSCode 卡片按探测结果动态
+  展示已安装/未安装与启动/详情/安装按钮
+- 安装不区分历史版本，统一从官方 update API 取最新稳定版
+  （https://update.code.visualstudio.com/api/update/win32-x64{-user|}/stable/latest，
+  仅 Windows x64），仅区分 User Installer / System Installer 供选择，安装目录可设置；
+  下载与静默安装（Inno Setup /VERYSILENT /NORESTART /MERGETASKS=... /DIR=...）封装在
+  vscode_installer.py，最新版信息带本地缓存、抓取失败回退缓存
+- 提权按需：System Installer 机器级安装一律提权，User Installer 仅当目标目录当前
+  用户不可写时才提权（needs_elevation）；VSCode 启动为非提权（cmd /c start），区别于
+  PyCharm 的提权启动——VSCode 是用户态编辑器，提权会导致拖放失效、新建文件属主变
+  管理员、扩展行为异常
+- 重置删除 %APPDATA%\Code 与 %USERPROFILE%\.vscode（reset_vscode_settings）；卸载为
+  交互式向导，卸载页新增"清理用户配置"复选框，勾选后在卸载成功时执行与重置相同的清理
+- 探测扫注册表 Uninstall 键（HKCU / HKLM / WOW6432Node），按 DisplayName 的 (User)/(System)
+  后缀或注册表 hive 判定 installType；新增页面视图 VscodeInstallView / VscodeDetailView /
+  VscodeUninstallView 与 api_vscode_install / start / uninstall / reset / detail.refresh /
+  latest.refresh 六个接口及对应路由
+- config.py 新增 VSCODE_DOWNLOAD_DIR、VSCODE_INSTALLED_SOURCES_FILE、VSCODE_LATEST_CACHE_FILE
+- VSCode 不提供重装：dev_tools 卡片已安装时只显示启动/详情（不再显示安装/重装按钮），
+  仅未安装时显示安装；VscodeInstallView 已安装时重定向到详情页、api_vscode_install 已安装
+  时直接拒绝，杜绝经直接访问安装页 URL 覆盖安装（如需重装需先卸载）
+- 修复启动 VSCode 后日志弹窗一直不关闭、也不弹"确定"按钮，直到用户关掉 VSCode 才报"启动
+  成功"的问题：_run_cmd_start 原用 subprocess.run(capture_output=True) 给 cmd.exe 建了
+  一个 stdout/stderr 管道，经 cmd /c start 拉起的 Code.exe 继承了管道写端；cmd 虽秒退，但
+  communicate() 要读到管道 EOF 才返回，而写端直到 Code.exe 退出才关闭，导致启动任务阻塞
+  到 VSCode 被关闭。改为 stdout/stderr=DEVNULL（无管道可读，只等 cmd.exe 秒退）；非提权
+  卸载走同一函数，一并修复
+- 依赖 jiecore 提升为 >=1.16.3：安装目录选择复用其通用目录选择器，需要"目录不存在
+  回退盘符列表并保留用户输入"的能力（目标安装目录通常尚未创建）
+- 顶部"清理下载缓存"按钮落地功能：点击后清空本应用 tmp 目录（tmp/python/）下的全部
+  内容（pycharm_download / vscode_download 等，保留 tmp/python 目录本身，下载目录会在
+  下次下载时自动重建），不影响已安装软件、也不触碰 DATA_DIR 的版本/安装信息缓存；
+  新增 api_clear_download_cache（POST api/clear-download-cache/）汇报删除项数与释放空间，
+  按钮处理器放在 layout.html 的 js_files 块（子页面只覆盖 js_code），保证全应用页面均可点击
+--------------------------------------------------------------------------
+v0.8.0
+- "卸载 PyCharm"日志弹窗不再在卸载向导一拉起时就弹"确定"按钮：此前 _run_uninstall_pycharm
+  经 cmd /c start 拉起向导后 cmd 秒退（退出码 0）即置任务成功，前端 JieTaskLog 立刻
+  显示"确定"，用户还没在向导里点完卸载就能跳转，跳回开发工具页时 PyCharm 仍在、看似没卸载
+- 新增 _wait_until_uninstalled：拉起向导后每隔 2 秒轮询注册表（pycharm_detect_installed），
+  直到检测不到 PyCharm 安装项才视为真正卸载完成并置任务成功，此时前端才显示"确定"供跳转；
+  等待期间任务保持 running、每 30 秒补一行"仍在等待"日志，超过 900 秒仍未卸载完则记为失败
+  并提示用户手动确认（兼顾用户在向导中取消的情况）
+- run_elevated 抛 TimeoutError 的兜底分支同样改为进入等待轮询，不再提前误报成功
+--------------------------------------------------------------------------
+v0.7.0
+- 安装页（pycharm_install.html）版本单选框渲染方式调整：版本说明文字改由单选框的
+  title 属性（悬停提示）呈现，不再在 custom-control 容器内渲染说明文本，
+  解决单选框与文字不在同一条线上的错位问题
+--------------------------------------------------------------------------
+v0.6.0
+- 完成开发工具页"安装 PyCharm"功能（pycharm_install.html）：提供安装目录选择（复用
+  jiecore 通用目录选择器 JieDirPicker）与版本选择（统一版/专业版/社区版，按版本缓存
+  的 is_unified 与下载地址动态渲染）
+- 点击"安装"后先下载安装包到 tmp 下载目录（PYCHARM_DOWNLOAD_DIR，已下载完整则复用），
+  再申请 UAC 提权执行 installer /S /CONFIG=<data/silent.config> /D=<安装目录> 静默安装
+- 后端新增 api_pycharm_install（POST dev-tools/api/pycharm/install/）登记 jiecore.tasks
+  后台任务并回传 task_id；下载与提权静默安装逻辑封装在 pycharm_installer.py
+  （download_pycharm / run_silent_install / find_version_entry / default_install_dir），
+  提权由 jiecore.system_ops.run_elevated 完成（ShellExecuteEx → PowerShell → schtasks 三级后备）
+- 前端用 JieTaskLog 弹出黑底日志窗，走 jiecore 通用任务状态接口
+  /jiecore/api/task-status/<task_id>/ 实时轮询下载与安装进度，成功后跳转 PyCharm 详情页；
+  .fail() 按状态码给出真实原因（status 0 → 服务未运行，403 → CSRF 校验未通过）
+- config.py 新增 APP_DIR、DEV_TOOLS_INSTALL_ROOT、PYCHARM_DOWNLOAD_DIR、
+  PYCHARM_SILENT_CONFIG_FILE 常量；PycharmInstallView 补全面包屑与版本/目录上下文
+--------------------------------------------------------------------------
+v0.5.0
+- 完成开发工具页"卸载 PyCharm"功能：卸载页点击卸载后以任务方式提权拉起本机 PyCharm
+  的卸载向导（此前 api_pycharm_uninstall 只是返回非法 JsonResponse({''}) 的桩函数、
+  且未注册路由，前端 ajax 的 url 为空、点击无效）
+- 后端 api_pycharm_uninstall（POST dev-tools/api/pycharm/uninstall/）登记 jiecore.tasks
+  后台任务并回传 task_id，从注册表安装信息读取 UninstallString 并拆分为可执行文件与
+  参数（_split_uninstall_command 兼容带引号 / 不带引号两种写法），提权由
+  jiecore.system_ops.run_elevated 完成（ShellExecuteEx → PowerShell → schtasks 三级后备）
+- 卸载程序为需用户逐步确认的常驻 GUI 向导，直接提权阻塞等待会触发 run_elevated 的
+  超时降级，故经 cmd.exe /c start 转手拉起：cmd 秒退返回码 0，卸载向导继承管理员令牌
+  在独立窗口运行；用户在各链路均取消 UAC 时记为失败
+- 前端 pycharm_uninstall.html 改用 JieTaskLog 弹出黑底日志窗，走 jiecore 通用任务状态
+  接口 /jiecore/api/task-status/<task_id>/ 实时轮询卸载进度，完成后跳回开发工具页；
+  .fail() 按状态码给出真实原因（status 0 → 服务未运行，403 → CSRF 校验未通过）
+--------------------------------------------------------------------------
+v0.4.1
+- _run_start_pycharm 补 except OSError 分支：提权链路自身失败（ShellExecuteEx 被拒 /
+  PowerShell 报错 / schtasks 拒绝访问）时原先异常直接穿透，run_in_thread 只记日志、
+  task['result'] 保持为空，前端 onFail 拿到空对象无从提示；现先写入可读的失败原因再抛出
+  （PermissionError / TimeoutError 已在各自分支拦截，不会误入）
+- 依赖 jiecore 提升为 >=1.16.1：该版本修了 ShellExecuteExW 结构体尺寸错误与全站
+  csrftoken cookie 未下发，"启动 PyCharm"在 runserver 与 pywebview 两种模式下不再
+  分别报"拒绝访问"与"网络错误"
+- dev_tools.html 去掉重复引入的 jiecore_tasklog.js（layout_base.html 已全局加载）
+- dev_tools.html 的 .fail() 不再一律提示"请检查网络"：改为接收 xhr 并按状态码给出
+  真实原因（status 0 → 服务未运行，403 → CSRF 校验未通过，其余 → 带 HTTP 状态码），
+  避免权限与服务端异常被伪装成网络故障
+--------------------------------------------------------------------------
+v0.4.0
+- 开发工具页新增"启动 PyCharm"功能：点击后以任务方式提权拉起本机已安装的 PyCharm
+- 后端 api_start_pycharm（POST dev-tools/api/pycharm/start/）登记 jiecore.tasks 后台
+  任务并回传 task_id，实际提权由 jiecore.system_ops.run_elevated 完成（ShellExecuteEx
+  → PowerShell → schtasks 三级后备），自动定位安装目录 bin 下的 pycharm64.exe/pycharm.exe
+- 前端改用 JieTaskLog 弹出黑底日志窗，走 jiecore 通用任务状态接口
+  /jiecore/api/task-status/<task_id>/ 实时轮询启动进度（此前按钮请求的
+  /api/start-pycharm 路由并不存在，点击只会提示网络异常）
+- PyCharm 为常驻 GUI 进程，直接提权等待会触发 run_elevated 的超时降级（重复弹 UAC、
+  甚至以 SYSTEM 隐藏启动），故经 cmd.exe /c start 转手拉起：cmd 秒退返回码 0，
+  PyCharm 继承管理员令牌在独立窗口运行；用户在各链路均取消 UAC 时记为失败
+- app_meta 声明 jiecore 依赖提升为 >=1.16.0（jiecore.tasks 自该版本起提供）
+--------------------------------------------------------------------------
+v0.3.0
+- 新增全局 PyPI 源管理页面（pypi_config.py + pypi_list.html）
+- 通过 runtime 环境 python.exe 执行 pip config，读取/设置/清除全局 index-url
+- 内置清华、阿里云、腾讯云、中科大、华为云、南京大学、豆瓣、网易等常见国内镜像源
+- 自定义源以 JSON 持久化存储，与内置源合并显示在列表中，支持随时删除
+- 支持一键恢复官方默认源、当前生效源自动高亮
+- 新增 JSON API：api_pypi_get / api_pypi_set / api_pypi_reset / api_pypi_add_custom / api_pypi_remove_custom
+--------------------------------------------------------------------------
+v0.2.0
+- 导航栏构造为按钮式横向链接，当前所在提供者高亮显示
+- PythonMixin 统一注入导航上下文（tabs、dev_tools_tabs、is_current），
+  扩展应用继承即获得导航功能
+- 新增开发工具提示页（DevToolsView + dev_tools.html），无扩展时显示友好提示
+- 环境变量按钮集成 jiecore 公共能力，点击弹出系统环境变量对话框
+--------------------------------------------------------------------------
+v0.1.0
+- 实现 Tab 布局框架，通过 ext_hooks 收集贡献者应用注册的 Tab
+- 新增环境记录存储（storage.py），使用 JSON 文件持久化
+- 新增 pip 包管理通用模块（pip_manager.py），供所有贡献者应用调用
+- 注册 app_services 服务：环境查询 + pip 包管理共 8 个服务
+- 新增 pip 包管理页面（pip_manage.html），支持安装/卸载/列表
+- 新增环境管理 API：移除记录、设置默认环境
+--------------------------------------------------------------------------
+v0.0.2
+- 新增 url_prefix 声明，路由挂载到 /runtimes/python/ 下
+--------------------------------------------------------------------------
+v0.0.1
+- python环境管理基础布局，目前没有功能

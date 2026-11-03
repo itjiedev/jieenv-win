@@ -1,0 +1,38 @@
+<div class="mt-3 pt-2 border-top border-light extra-action-body"
+     data-action-type="{{ action_binding.type }}"
+     data-target-provider-key="{{ action_binding.target_provider_key|default:'' }}"
+     data-action-id="lang_packages:{{ action_binding.target_provider_key|default:'' }}">
+    <input type="hidden" class="lang-packages-hidden"
+           data-default-packages="{{ packages_comma }}"
+           data-current-packages="{{ packages_comma }}"
+           value="{{ packages_newline }}">
+    <div class="d-flex align-items-center mb-2">
+        <i class="{{ icon }} text-info mr-2"></i>
+        <span class="font-weight-bold small">{{ label }}</span>
+        <span class="badge badge-info ml-2" style="font-size:.6rem;padding:1px 4px;">后置动作</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ml-auto lang-packages-edit-btn"
+                style="font-size:.7rem;padding:1px 6px;" title="编辑包列表">
+            <i class="fa-solid fa-pen"></i> 编辑
+        </button>
+    </div>
+    {% if packages %}
+    <div class="lang-packages-list">
+        <ul class="list-unstyled mb-0 pl-2">
+            {% for pkg in packages %}
+            <li class="d-flex align-items-center py-1 border-bottom border-light last:border-0">
+                <i class="fa-solid fa-cube text-muted mr-2" style="font-size:.65rem;"></i>
+                <code class="text-primary" style="font-size:.8rem;">{{ pkg }}</code>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <div class="text-muted small pl-2">（无推荐包）</div>
+    {% endif %}
+    <div class="lang-packages-diff mt-2 pl-2" style="display:none;"></div>
+    {% if description %}
+    <div class="mt-2 small text-muted">
+        <i class="fa-solid fa-circle-info mr-1"></i>{{ description }}
+    </div>
+    {% endif %}
+</div>

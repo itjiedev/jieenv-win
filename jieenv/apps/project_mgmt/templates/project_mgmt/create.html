@@ -1,0 +1,1232 @@
+{% extends "layout_main.html" %}
+{% block page_title %}创建项目{% endblock %}
+
+{% block page_css %}
+<style>
+.template-card { cursor: pointer; transition: border-color .15s, background-color .15s, box-shadow .15s; }
+.template-card:hover { border-color: #3b82f6 !important; }
+.template-card .template-icon { font-size: 1.2rem; }
+.template-card .card-body { padding: .5rem .75rem; }
+.template-card .template-name { font-size: .85rem; font-weight: 600; line-height: 1.2; }
+.template-card .template-desc { font-size: .7rem; line-height: 1.3; }
+.template-card .template-tid { font-size: .65rem; }
+.template-filter-bar { gap: .25rem; flex-wrap: wrap; align-items: center; }
+
+.mode-summary { }
+.mode-form { }
+.mode-edit .binding-btn-edit .btn-label { content: '完成'; }
+
+.summary-row { line-height: 1.8; }
+.summary-row.has-error .summary-value { color: #dc3545; font-weight: 600; }
+.summary-row.has-warn .summary-value { color: #d97706; font-weight: 600; }
+.summary-value .text-warning i { margin-right: 4px; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="container-fluid py-3">
+    {% if errors %}
+    <div class="alert alert-danger">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <strong>提交有误，请检查以下字段：</strong>
+        <ul class="mb-0 mt-2 pl-3">
+            {% for field, msg in errors.items %}
+            <li>{{ msg }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form id="create-form" method="post" action="{% url 'project_mgmt:create_wizard' %}">
+        {% csrf_token %}
+        <input type="hidden" name="configs" id="configs-input" value="{{ wizard.configs|default:'' }}">
+        <input type="hidden" name="template_id" id="template_id_input" value="{{ wizard.template_id|default:'' }}">
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="fa-solid fa-puzzle-piece"></i>
+                <strong>① 选择项目模板</strong>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-pills template-filter-bar mb-2" role="tablist">
+                    {% for cat_id, cat_label, cat_icon, cat_count in categories %}
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link {% if cat_id == 'all' %}active{% endif %}"
+                           data-category="{{ cat_id }}" role="tab" aria-selected="{% if cat_id == 'all' %}true{% else %}false{% endif %}">
+                            <i class="{{ cat_icon }}"></i> {{ cat_label }}
+                            <span class="badge rounded-pill {% if cat_id == 'all' %}bg-light text-dark{% else %}bg-secondary{% endif %}">{{ cat_count }}</span>
+                        </a>
+                    </li>
+                    {% endfor %}
+                    <li class="nav-item flex-grow-1"></li>
+                    <li class="nav-item" style="list-style:none">
+                        <input type="text" id="template-search" class="form-control form-control-sm"
+                               style="max-width:180px" placeholder="搜索模板...">
+                    </li>
+                </ul>
+
+                <div class="row">
+                    {% for t in templates %}
+                    <div class="col-md-3 col-sm-4 mb-2 template-col" data-category="{{ t.category|default:'basic' }}"
+                         data-search-name="{{ t.name }}" data-search-id="{{ t.template_id }}"
+                         data-search-desc="{{ t.description|default:'' }}">
+                        <div class="card template-card h-100 {% if wizard.template_id == t.template_id %}selected{% endif %}"
+                             style="position:relative"
+                             data-template-id="{{ t.template_id }}">
+                            <div class="card-body d-flex flex-column p-3">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="{{ t.icon|default:'fa-solid fa-puzzle-piece' }} text-primary template-icon mr-1"></i>
+                                    <div class="template-name">{{ t.name }}</div>
+                                </div>
+                                <code class="small text-muted template-tid">{{ t.template_id }}</code>
+                                <p class="text-muted template-desc mb-0 mt-1">{{ t.description|default:"" }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="col-12 text-center text-muted py-4">暂无可用模板</div>
+                    {% endfor %}
+                </div>
+                {% if errors.template_id %}
+                <div class="text-danger small mt-1">{{ errors.template_id }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fa-solid fa-file-lines"></i> <strong>② 基本信息</strong></span>
+                <button type="button" class="btn btn-sm btn-outline-warning d-none" id="btn-clear-wizard" title="清空上次未提交的填写数据，从零开始">
+                    <i class="fa-solid fa-broom"></i> 清空表单重填
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">项目名称</label>
+                    <div class="col-sm-10">
+                        <input type="text" name="project_name" id="project_name" class="form-control"
+                               placeholder="例如：我的Python项目"
+                               value="{{ wizard.project_name|default:'' }}">
+                        <div id="project_name_error" class="text-danger small mt-1" style="display:none;">项目名称必填</div>
+                        {% if errors.project_name %}
+                        <div class="text-danger small mt-1">{{ errors.project_name }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">目录名</label>
+                    <div class="col-sm-10">
+                        <div class="input-group">
+                            <input type="text" name="dir_slug" id="dir_slug" class="form-control"
+                                   placeholder="自动从项目名生成，可手动修改"
+                                   value="{{ wizard.dir_slug|default:'' }}">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary" id="btn-regen-slug" title="重新生成">
+                                    <i class="fa-solid fa-arrows-rotate"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <small class="form-text text-muted">只能包含字母、数字和下划线</small>
+                        <div id="dir_slug_error" class="text-danger small mt-1" style="display:none;"></div>
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">基础目录</label>
+                    <div class="col-sm-10">
+                        <div class="input-group">
+                            <input type="text" name="base_dir" id="base_dir" class="form-control" readonly
+                                   data-default-value="{{ default_base_dir }}"
+                                   value="{{ wizard.base_dir|default:default_base_dir }}">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-primary" id="btn-pick-dir">
+                                    <i class="fa-solid fa-folder-open"></i> 选择...
+                                </button>
+                            </div>
+                        </div>
+                        <small class="form-text text-muted">默认使用 jieEnv 的 workspace 目录，点右侧按钮可更换</small>
+                        {% if errors.base_dir %}
+                        <div class="text-danger small mt-1">{{ errors.base_dir }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="form-group row">
+                    <label class="col-sm-2 col-form-label">完整路径</label>
+                    <div class="col-sm-10">
+                        <input type="text" id="project_dir" class="form-control" readonly
+                               value="{{ wizard.project_dir|default:'' }}">
+                        <input type="hidden" name="project_dir" value="{{ wizard.project_dir|default:'' }}">
+                        <small class="form-text text-muted">基础目录 / 目录名</small>
+                        {% if errors.project_dir %}
+                        <div class="text-danger small mt-1">{{ errors.project_dir }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="fa-solid fa-plug"></i>
+                <strong>③ 组件配置</strong>
+                <span class="text-muted small ml-2" id="binding-hint">请先选择项目模板</span>
+            </div>
+            <div class="card-body bg-light" id="bindings-area">
+                <div class="text-center text-muted py-4" id="bindings-placeholder">
+                    <i class="fa-solid fa-arrow-up"></i>
+                    请先在上方选择一个项目模板，此处将自动加载该模板依赖的组件
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="fa-solid fa-play-circle"></i>
+                <strong>④ 创建项目</strong>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info py-2 mb-3">
+                    <i class="fa-solid fa-circle-info"></i>
+                    提交后将按模板自动创建目录、初始化组件并生成运行环境。此操作不可撤销。
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg" id="btn-submit">
+                    <i class="fa-solid fa-rocket"></i> 创建项目
+                </button>
+                <a href="{% url 'project_mgmt:index' %}" class="btn btn-outline-secondary btn-lg ml-2">
+                    取消
+                </a>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+(function() {
+    var slugifyRegex = /[^a-z0-9_]/g;
+    var LS_KEY = 'jieenv_create_wizard_state';
+    var _saveTimer = null;
+    var _resetting = false;
+
+    function getSavedState() {
+        try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
+        catch(e) { return {}; }
+    }
+
+    function saveWizardState() {
+        var tid = $('#template_id_input').val() || '';
+        var state = getSavedState();
+        state._current_template = tid;
+        if (tid) {
+            state[tid] = {
+                project_name: $('#project_name').val() || '',
+                dir_slug: $('#dir_slug').val() || '',
+                base_dir: $('#base_dir').val() || '',
+                saved_at: Date.now()
+            };
+        }
+        try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e) {}
+        updateClearBtnVisibility();
+    }
+
+    function scheduleSave() {
+        if (_resetting) return;
+        if (_saveTimer) clearTimeout(_saveTimer);
+        _saveTimer = setTimeout(saveWizardState, 300);
+    }
+
+    function restoreWizardState() {
+        var tid = $('#template_id_input').val() || '';
+        if (!tid) return false;
+        var state = getSavedState()[tid];
+        if (!state) return false;
+        var restored = false;
+        if (state.project_name) { $('#project_name').val(state.project_name); restored = true; }
+        if (state.dir_slug) { $('#dir_slug').val(state.dir_slug).data('manually-edited', true); restored = true; }
+        if (state.base_dir) { $('#base_dir').val(state.base_dir); restored = true; }
+        if (restored) {
+            updateProjectDir();
+            validateSlug();
+        }
+        return restored;
+    }
+
+    function hasSavedState() {
+        try {
+            var raw = localStorage.getItem(LS_KEY);
+            if (!raw) return false;
+            var state = JSON.parse(raw);
+            if (Object.keys(state).length === 0) return false;
+            for (var k in state) {
+                if (k === '_current_template') continue;
+                var bucket = state[k];
+                if (!bucket || typeof bucket !== 'object') continue;
+                for (var fk in bucket) {
+                    if (fk === 'saved_at') continue;
+                    var val = bucket[fk];
+                    if (val === undefined || val === null) continue;
+                    if (typeof val === 'string' && val.trim() === '') continue;
+                    return true;
+                }
+            }
+            return false;
+        } catch(e) { return false; }
+    }
+
+    function updateClearBtnVisibility() {
+        if (hasSavedState()) {
+            $('#btn-clear-wizard').removeClass('d-none');
+        } else {
+            $('#btn-clear-wizard').addClass('d-none');
+        }
+    }
+
+    function clearWizardState() {
+        try { localStorage.removeItem(LS_KEY); } catch(e) {}
+        updateClearBtnVisibility();
+    }
+
+    function resetWizardForm() {
+        layui.layer.confirm(
+            '确定要清空表单并重置到空表单状态吗？',
+            { icon: 3, title: '清空表单重填', btn: ['确定清空', '取消'] },
+            function(idx) {
+                if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+                clearWizardState();
+                _resetting = true;
+                layui.layer.close(idx);
+                window.location.reload();
+            }
+        );
+    }
+
+    function startTaskCleanupPoller(taskId) {
+        var stopped = false;
+        function pollOnce() {
+            if (stopped) return;
+            $.get('/jiecore/api/task-status/' + encodeURIComponent(taskId) + '/').done(function(s) {
+                if (!s) { scheduleNext(); return; }
+                var st = s.status || '';
+                if (st === 'success') {
+                    stopped = true;
+                    clearWizardState();
+                } else if (st === 'failed' || st === 'error' || st === 'cancelled') {
+                    stopped = true;
+                } else {
+                    scheduleNext();
+                }
+            }).fail(function() { scheduleNext(); });
+        }
+        function scheduleNext() { if (!stopped) setTimeout(pollOnce, 1500); }
+        pollOnce();
+    }
+
+    function slugify(name) {
+        if (!name) return '';
+        var ascii = (name.match(/[A-Za-z0-9]+/g) || []).join('_').toLowerCase();
+        if (!ascii) {
+            ascii = 'project_' + Math.random().toString(36).slice(2, 6);
+        }
+        return ascii.replace(/_+/g, '_').replace(/^_|_$/g, '');
+    }
+
+    function updateProjectDir() {
+        var base = $('#base_dir').val() || '';
+        var slug = $('#dir_slug').val() || '';
+        var pd = '';
+        if (base && slug) {
+            pd = (base.replace(/[\\/]+$/, '') + '/' + slug).replace(/\\/g, '/');
+        }
+        $('#project_dir').val(pd);
+        $('input[name="project_dir"]').val(pd);
+        $('#bindings-area .dir-with-base').each(function() {
+            var $box = $(this);
+            if (!$box.data('base-manual') && pd) {
+                $box.find('.dir-base-input').val(pd);
+                recomputeDirFull($box);
+            }
+        });
+    }
+
+    function validateSlug() {
+        var val = $('#dir_slug').val() || '';
+        var errEl = $('#dir_slug_error');
+        var inputEl = $('#dir_slug');
+        if (!val) {
+            errEl.text('目录名必填').show();
+            inputEl.addClass('is-invalid');
+            return true;
+        }
+        if (!/^[A-Za-z0-9_]+$/.test(val)) {
+            errEl.text('只能包含字母、数字和下划线').show();
+            inputEl.addClass('is-invalid');
+            return true;
+        }
+        errEl.hide().text('');
+        inputEl.removeClass('is-invalid');
+        return false;
+    }
+
+    function validateProjectName() {
+        var val = $('#project_name').val() || '';
+        var inputEl = $('#project_name');
+        var errEl = $('#project_name_error');
+        if (!val.trim()) {
+            inputEl.addClass('is-invalid');
+            errEl.show();
+            return true;
+        }
+        inputEl.removeClass('is-invalid');
+        errEl.hide();
+        return false;
+    }
+
+    var _dirCheckTimer = null;
+    function scheduleDirCheck() {
+        clearTimeout(_dirCheckTimer);
+        _dirCheckTimer = setTimeout(checkProjectDirExists, 400);
+    }
+
+    function checkProjectDirExists() {
+        var base = $('#base_dir').val() || '';
+        var slug = $('#dir_slug').val() || '';
+        var errEl = $('#dir_slug_error');
+        var inputEl = $('#dir_slug');
+        var $pd = $('#project_dir');
+
+        if (!base || !slug) {
+            $pd.removeClass('is-invalid').removeClass('is-valid');
+            return;
+        }
+        if (validateSlug()) return;
+
+        $.post('{% url "project_mgmt:api_check_project_dir" %}', {
+            base_dir: base,
+            dir_slug: slug,
+            project_dir: $pd.val() || ''
+        }, function(resp) {
+            if (!resp || !resp.ok) return;
+            if (resp.exists && resp.is_dir) {
+                errEl.text('目录已存在，请更换目录名或基础路径').show();
+                inputEl.addClass('is-invalid');
+                $pd.addClass('is-invalid').removeClass('is-valid');
+            } else {
+                $pd.removeClass('is-invalid').addClass('is-valid');
+                if ($pd.hasClass('is-invalid')) {
+                    errEl.hide().text('');
+                    inputEl.removeClass('is-invalid');
+                }
+            }
+        });
+    }
+
+    var _currentCat = 'all';
+    var _currentSearch = '';
+
+    function applyTemplateFilter() {
+        var kw = _currentSearch.toLowerCase().trim();
+        $('.template-col').each(function() {
+            var col = $(this);
+            var cat = col.data('category');
+            var matchCat = (_currentCat === 'all' || cat === _currentCat);
+            var matchKw = !kw ||
+                (col.data('search-name') || '').toLowerCase().indexOf(kw) !== -1 ||
+                (col.data('search-id') || '').toLowerCase().indexOf(kw) !== -1 ||
+                (col.data('search-desc') || '').toLowerCase().indexOf(kw) !== -1;
+            if (matchCat && matchKw) { col.show(); } else { col.hide(); }
+        });
+    }
+
+    $('.template-filter-bar').on('click', '.nav-link', function(e) {
+        e.preventDefault();
+        if ($(this).hasClass('nav-link')) {
+            _currentCat = $(this).data('category');
+            $('.template-filter-bar .nav-link').removeClass('active')
+                .attr('aria-selected', 'false');
+            $(this).addClass('active').attr('aria-selected', 'true');
+            applyTemplateFilter();
+        }
+    });
+
+    $('#template-search').on('input', function() {
+        _currentSearch = $(this).val();
+        applyTemplateFilter();
+    });
+
+    $('#create-form').on('click', '.template-card', function() {
+        var tid = $(this).data('template-id');
+        $('.template-card').each(function() {
+            $(this).removeClass('selected').css({
+                'border': '2px solid transparent',
+                'background-color': '',
+                'box-shadow': ''
+            });
+        });
+        $(this).addClass('selected').css({
+            'border': '2px solid #3b82f6',
+            'background-color': '#eff6ff',
+            'box-shadow': '0 4px 12px rgba(59,130,246,.35)'
+        });
+        $('#template_id_input').val(tid);
+        saveWizardState();
+        loadBindings(tid);
+    });
+
+    function loadBindings(templateId, done) {
+        if (!templateId) {
+            $('#bindings-area').html('<div class="text-center text-muted py-4"><i class="fa-solid fa-arrow-up"></i> 请先在上方选择一个项目模板</div>');
+            $('#binding-hint').text('请先选择项目模板');
+            if (typeof done === 'function') done();
+            return;
+        }
+        $('#bindings-area').html('<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> 加载组件配置...</div>');
+        $('#binding-hint').text('加载中...');
+
+        $.ajax({
+            url: '{% url "project_mgmt:api_binding_form" %}',
+            type: 'GET',
+            data: { template_id: templateId, project_dir: $('#project_dir').val() || '', project_name: $('#project_name').val() || '', dir_slug: $('#dir_slug').val() || '' },
+            success: function(resp) {
+                if (resp && resp.ok) {
+                    $('#bindings-area').html(resp.html);
+                    $('#binding-hint').text('');
+                    bindInstallButtons();
+                    bindDirWidgets();
+                    bindToggleFields();
+                    bindEditToggle();
+                    bindLangPackagesEdit();
+                    bindEnableButtons();
+                    var restored = restoreWizardState();
+                    updateProjectDir();
+                    scheduleDirCheck();
+                    refreshLangPackagesDiff();
+                    if (typeof done === 'function') setTimeout(done, 800);
+                } else {
+                    $('#bindings-area').html('<div class="alert alert-warning py-2 mb-0">' +
+                        (resp && resp.error ? resp.error : '加载失败') + '</div>');
+                    $('#binding-hint').text('加载失败');
+                }
+            },
+            error: function() {
+                $('#bindings-area').html('<div class="alert alert-danger py-2 mb-0">网络错误</div>');
+                $('#binding-hint').text('网络错误');
+                if (typeof done === 'function') done();
+            }
+        });
+    }
+
+    function refreshSingleBinding(providerKey, done) {
+        var tid = $('#template_id_input').val();
+        if (!tid) return;
+        $.ajax({
+            url: '{% url "project_mgmt:api_binding_form" %}',
+            type: 'GET',
+            data: {
+                template_id: tid,
+                project_dir: $('#project_dir').val() || '',
+                project_name: $('#project_name').val() || '',
+                dir_slug: $('#dir_slug').val() || '',
+                provider_key: providerKey
+            },
+            success: function(resp) {
+                if (resp && resp.ok && resp.html) {
+                    var $oldCard = $('#bindings-area .binding-form[data-provider-key="' + providerKey + '"]');
+                    if ($oldCard.length) {
+                        $oldCard.replaceWith(resp.html);
+                        bindDirWidgets();
+                        bindToggleFields();
+                        bindEditToggle();
+                        bindLangPackagesEdit();
+                        bindEnableButtons();
+                        bindInstallButtons();
+                        updateProjectDir();
+                    }
+                }
+                if (typeof done === 'function') done();
+            },
+            error: function() {
+                if (typeof done === 'function') done();
+            }
+        });
+    }
+
+    function bindInstallButtons() {
+        $('#bindings-area').off('click', '.btn-install-provider').on('click', '.btn-install-provider', function() {
+            var url = $(this).data('url');
+            var label = $(this).data('label');
+            layui.layer.confirm(
+                '即将跳转至应用市场，安装 <b>' + label + '</b> 扩展，然后返回继续创建项目。',
+                { icon: 3, title: '安装扩展' },
+                function(idx) {
+                    layui.layer.close(idx);
+                    window.location.href = url + '&next=' + encodeURIComponent(window.location.pathname + window.location.search);
+                }
+            );
+        });
+    }
+
+    function bindEnableButtons() {
+        $('#bindings-area').off('click', '.btn-enable-provider').on('click', '.btn-enable-provider', function() {
+            var $btn = $(this);
+            var appId = $btn.data('app-id');
+            var label = $btn.data('label');
+            var providerKey = $btn.closest('.binding-form').data('provider-key');
+            var apiUrl = '{% url "jiecore:api_app_action" app_name="__APP__" action="enable" %}'.replace('__APP__', encodeURIComponent(appId));
+            layui.layer.confirm(
+                '确认要启用应用 <b>' + label + '</b> 吗？启用后组件将自动更新为可用状态。',
+                { icon: 3, title: '启用应用', btn: ['确认启用', '取消'] },
+                function(idx) {
+                    layui.layer.close(idx);
+                    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> 启用中...');
+                    $.ajax({
+                        url: apiUrl,
+                        type: 'POST',
+                        dataType: 'json',
+                        headers: { 'X-CSRFToken': $('[name="csrfmiddlewaretoken"]').val() || '' }
+                    }).done(function(res) {
+                        if (res && res.success) {
+                            layui.layer.msg('启用成功，正在更新组件...', { icon: 1, time: 1500 });
+                            refreshSingleBinding(providerKey);
+                        } else {
+                            layui.layer.msg((res && res.message) || '启用失败', { icon: 2, time: 4000 });
+                            $btn.prop('disabled', false).html('<i class="fa-solid fa-toggle-on"></i> 前往启用');
+                        }
+                    }).fail(function(xhr) {
+                        layui.layer.msg('请求失败: ' + (xhr.statusText || '请稍后重试'), { icon: 2, time: 4000 });
+                        $btn.prop('disabled', false).html('<i class="fa-solid fa-toggle-on"></i> 前往启用');
+                    });
+                }
+            );
+        });
+    }
+
+    function recomputeDirFull($box) {
+        var base = ($box.find('.dir-base-input').val() || '').replace(/[\\/]+$/, '').replace(/\\/g, '/');
+        var sub = ($box.find('.dir-sub-input').val() || '').replace(/[\\/]+$/, '').replace(/\\/g, '/');
+        var full = base && sub ? (base + '/' + sub) : '';
+        $box.find('.dir-full-path').val(full);
+        $box.find('.dir-full-preview').text(full ? ('完整路径: ' + full) : '');
+        var $card = $box.closest('.binding-form');
+        if ($card.length) refreshSummary($card);
+    }
+
+    function bindDirWidgets() {
+        $('#bindings-area .dir-with-base').each(function() {
+            var $box = $(this);
+            if ($box.data('bound')) return;
+            $box.data('bound', 1);
+
+            if (!$box.find('.dir-base-input').val()) {
+                var pd = $('#project_dir').val() || '';
+                if (pd) {
+                    $box.find('.dir-base-input').val(pd);
+                }
+            }
+            recomputeDirFull($box);
+
+            $box.on('input', '.dir-base-input', function() {
+                $box.data('base-manual', 1);
+                recomputeDirFull($box);
+            });
+            $box.on('input', '.dir-sub-input', function() {
+                recomputeDirFull($box);
+            });
+            $box.on('click', '.dir-pick-btn', function() {
+                if (typeof JieDirPicker !== 'undefined') {
+                    JieDirPicker.open({
+                        initialPath: $box.find('.dir-base-input').val() || 'D:/',
+                        onSelect: function(path) {
+                            $box.data('base-manual', 1);
+                            $box.find('.dir-base-input').val(path);
+                            recomputeDirFull($box);
+                        }
+                    });
+                } else {
+                    layui.layer.alert('目录选择器未加载');
+                }
+            });
+        });
+    }
+
+    function bindToggleFields() {
+        $('#bindings-area').off('change', 'input[data-is-toggle="1"]').on('change', 'input[data-is-toggle="1"]', function() {
+            var $cb = $(this);
+            var on = $cb.is(':checked');
+            var $grp = $cb.closest('.form-group');
+            var targets = ($grp.data('toggle-fields') || '').split(',').filter(Boolean);
+            var $card = $cb.closest('.binding-form');
+            for (var i = 0; i < targets.length; i++) {
+                var $f = $card.find('[data-field-key="' + targets[i] + '"]');
+                if (on) {
+                    $f.show();
+                    $f.find('input, select, textarea').prop('disabled', false);
+                } else {
+                    $f.hide();
+                    $f.find('input, select, textarea').prop('disabled', true);
+                }
+            }
+            var $sumRow = $card.find('.summary-row[data-toggle-controls]');
+            if ($sumRow.length) {
+                var sumTargets = ($sumRow.data('toggle-controls') || '').split(',').filter(Boolean);
+                for (var j = 0; j < sumTargets.length; j++) {
+                    var $sr = $card.find('.summary-row[data-field-key="' + sumTargets[j] + '"]');
+                    if (on) $sr.show(); else $sr.hide();
+                }
+            }
+        });
+        $('#bindings-area input[data-is-toggle="1"]').trigger('change');
+    }
+
+    function bindEditToggle() {
+        $('#bindings-area').off('click', '.binding-btn-edit').on('click', '.binding-btn-edit', function() {
+            var $btn = $(this);
+            var $card = $btn.closest('.binding-form');
+            if ($card.hasClass('mode-edit')) {
+                refreshSummary($card);
+                $card.removeClass('mode-edit');
+                $card.find('.mode-summary').show();
+                $card.find('.mode-form').hide();
+                $btn.find('.btn-label').text('编辑');
+                $btn.find('i').removeClass('fa-check').addClass('fa-pen-to-square');
+            } else {
+                $card.addClass('mode-edit');
+                $card.find('.mode-summary').hide();
+                $card.find('.mode-form').show();
+                $btn.find('.btn-label').text('完成');
+                $btn.find('i').removeClass('fa-pen-to-square').addClass('fa-check');
+            }
+        });
+    }
+
+    function refreshSummary($card) {
+        if (!$card) $card = $('#bindings-area');
+        if ($card.hasClass('binding-form')) $card = $card;
+        else $card = $card.find('.binding-form');
+        $card.each(function() {
+            var $c = $(this);
+            var pk = $c.data('provider-key');
+            $c.find('.summary-value').each(function() {
+                var $sv = $(this);
+                var fk = $sv.data('field-key');
+                var ftype = $sv.data('field-type') || '';
+                var uiw = $sv.data('ui-widget') || '';
+                var required = $sv.attr('data-required') === '1';
+                var $input = $c.find('[name="config_' + pk + '_' + fk + '"]');
+                var isEmpty = false;
+
+                console.log('[refreshSummary]', pk, fk, 'required=', required, 'type=', ftype, 'inputVal=', $input.val());
+
+                if (uiw === 'dir_with_base') {
+                    var $dirBox = $c.find('.dir-with-base[data-field="' + fk + '"]');
+                    if ($dirBox.length) {
+                        var sub = $dirBox.find('.dir-sub-input').val() || '.venv';
+                        var full = $dirBox.find('.dir-full-path').val() || '';
+                        $sv.html('<span class="font-weight-bold">' + escapeHtml(sub) + '</span>' +
+                            (full ? ('<small class="text-muted ml-2">' + escapeHtml(full) + '</small>') : ''));
+                        isEmpty = !full;
+                    }
+                } else if (ftype === 'checkbox') {
+                    var checked = $input.prop('checked');
+                    isEmpty = false;
+                    if (checked) {
+                        $sv.html('<span class="text-success">使用 <i class="fa-solid fa-check"></i></span>');
+                    } else {
+                        $sv.html('<span class="text-muted">关闭</span>');
+                    }
+                } else if (ftype === 'select') {
+                    var val = $input.val() || '';
+                    var label = val;
+                    $input.find('option').each(function() {
+                        if ($(this).val() === val) label = $(this).text();
+                    });
+                    isEmpty = !val;
+                    if (isEmpty && required) {
+                        $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                    } else if (isEmpty) {
+                        $sv.html('<span class="text-muted">—</span>');
+                    } else {
+                        $sv.html('<span class="font-weight-bold">' + escapeHtml(label) + '</span>');
+                    }
+                } else if (ftype === 'password') {
+                    var pv = ($input.val() || '').trim();
+                    isEmpty = !pv;
+                    if (isEmpty && required) {
+                        $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                    } else if (isEmpty) {
+                        $sv.html('<span class="text-muted">未设置</span>');
+                    } else {
+                        $sv.html('••••••');
+                    }
+                } else {
+                    var tv = ($input.val() || '').trim();
+                    isEmpty = !tv;
+                    if (isEmpty && required) {
+                        $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                    } else {
+                        $sv.html('<span class="font-weight-bold">' + escapeHtml(tv || '—') + '</span>');
+                    }
+                }
+
+                console.log('[refreshSummary] →', pk, fk, 'isEmpty=', isEmpty, 'result_state=', required && isEmpty ? 'warn' : 'ok');
+
+                if (required && isEmpty) {
+                    $sv.attr('data-state', 'warn');
+                    $sv.closest('.summary-row').addClass('has-error');
+                } else {
+                    $sv.removeAttr('data-state');
+                    $sv.closest('.summary-row').removeClass('has-error');
+                }
+            });
+        });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    function bindLangPackagesEdit() {
+        $('#bindings-area').off('click', '.lang-packages-edit-btn').on('click', '.lang-packages-edit-btn', function() {
+            var $body = $(this).closest('.extra-action-body');
+            var $hidden = $body.find('.lang-packages-hidden');
+            var currentVal = $hidden.val() || '';
+            var currentLines = currentVal.split(/\r?\n/).filter(function(l) { return l.trim(); });
+
+            var html = '<div style="padding:15px 18px;">' +
+                '<p class="text-muted small mb-2">每行一个 pip 包，支持版本约束（如 <code>django>=4.2</code>）。' +
+                '<br><i class="fa-solid fa-triangle-exclamation text-warning"></i> ' +
+                '如果填写错误，该包将在实际安装时被跳过；模板预置的包安装失败会自动回退到模板版本。</p>' +
+                '<textarea id="lang-pkg-textarea" class="form-control" rows="8" placeholder="每行一个包">' +
+                currentLines.join('\n') + '</textarea>' +
+                '</div>';
+
+            layui.layer.open({
+                type: 1,
+                title: '编辑包列表',
+                area: ['480px', '400px'],
+                content: html,
+                btn: ['确定', '取消'],
+                yes: function(idx) {
+                    var newVal = ($('#lang-pkg-textarea').val() || '').trim();
+                    var newLines = newVal ? newVal.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(Boolean) : [];
+                    $hidden.val(newLines.join('\n'));
+                    $hidden.data('current-packages', newLines.join(','));
+                    layui.layer.close(idx);
+                    scheduleSave();
+                    refreshLangPackagesDiff();
+                },
+                btn2: function(idx) {
+                    layui.layer.close(idx);
+                }
+            });
+        });
+    }
+
+    function _extractPkgName(spec) {
+        if (!spec) return '';
+        var m = spec.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)/);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    function refreshLangPackagesDiff() {
+        $('#bindings-area .extra-action-body[data-action-id]').each(function() {
+            var $body = $(this);
+            var $hidden = $body.find('.lang-packages-hidden');
+            var $diff = $body.find('.lang-packages-diff');
+            if (!$hidden.length || !$diff.length) return;
+
+            var defaultCsv = ($hidden.data('default-packages') || '').trim();
+            var currentCsv = ($hidden.data('current-packages') || $hidden.val().replace(/\n/g, ',')).trim();
+            if (!defaultCsv) { $diff.hide(); return; }
+
+            var defaults = defaultCsv.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+            var currents = currentCsv.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+            if (defaults.join(',') === currents.join(',')) { $diff.hide(); return; }
+
+            var defMap = {};
+            defaults.forEach(function(s) { defMap[_extractPkgName(s)] = s; });
+            var curMap = {};
+            currents.forEach(function(s) { curMap[_extractPkgName(s)] = s; });
+
+            var added = [], modified = [], removed = [];
+            currents.forEach(function(s) {
+                var nm = _extractPkgName(s);
+                if (!defMap[nm]) added.push(s);
+                else if (defMap[nm] !== s) modified.push({ from: defMap[nm], to: s });
+            });
+            defaults.forEach(function(s) {
+                var nm = _extractPkgName(s);
+                if (!curMap[nm]) removed.push(s);
+            });
+
+            if (!added.length && !modified.length && !removed.length) { $diff.hide(); return; }
+
+            var html = '<div class="small" style="background:#fffbe6;border:1px solid #ffe58f;border-radius:4px;padding:6px 10px;">' +
+                '<div class="text-warning font-weight-bold mb-1"><i class="fa-solid fa-pen-to-square mr-1"></i>您已修改包列表：</div>';
+            modified.forEach(function(item) {
+                html += '<div class="text-muted" style="line-height:1.6;"><span class="text-warning">⚠</span> ' +
+                    '<code style="font-size:.75rem;">' +
+                    $('<div>').text(item.from).html() + '</code>' +
+                    ' <i class="fa-solid fa-arrow-right text-muted" style="font-size:.55rem;"></i> ' +
+                    '<code class="text-warning" style="font-size:.75rem;">' +
+                    $('<div>').text(item.to).html() + '</code></div>';
+            });
+            added.forEach(function(s) {
+                html += '<div class="text-muted" style="line-height:1.6;"><span class="text-success">✚</span> ' +
+                    '<code class="text-success" style="font-size:.75rem;">' +
+                    $('<div>').text(s).html() + '</code></div>';
+            });
+            removed.forEach(function(s) {
+                html += '<div class="text-muted" style="line-height:1.6;"><span style="color:#999;">✕</span> ' +
+                    '<code style="font-size:.75rem;color:#999;text-decoration:line-through;">' +
+                    $('<div>').text(s).html() + '</code></div>';
+            });
+            html += '</div>';
+            $diff.html(html).show();
+        });
+    }
+
+    function collectActionOverrides() {
+        var overrides = {};
+        $('#bindings-area .extra-action-body[data-action-id]').each(function() {
+            var $body = $(this);
+            var actionId = $body.data('action-id');
+            var $hidden = $body.find('.lang-packages-hidden');
+            var current = ($hidden.data('current-packages') || '').split(',').filter(Boolean);
+            var defaults = ($hidden.data('default-packages') || '').split(',').filter(Boolean);
+            var curJoined = current.join(',');
+            var defJoined = defaults.join(',');
+            if (curJoined !== defJoined) {
+                overrides[actionId] = { packages: current };
+            }
+        });
+        return overrides;
+    }
+    $('#project_name').on('input', function() {
+        validateProjectName();
+        var name = $(this).val();
+        if (!$('#dir_slug').data('manually-edited')) {
+            $('#dir_slug').val(slugify(name));
+            validateSlug();
+            updateProjectDir();
+            scheduleDirCheck();
+        }
+        $('input[data-default-from="project_name"]').each(function() {
+            if (!$(this).data('manually-edited')) {
+                $(this).val(name);
+            }
+        });
+        $('input[data-default-from="dir_slug"]').each(function() {
+            if (!$(this).data('manually-edited')) {
+                $(this).val($('#dir_slug').val());
+            }
+        });
+    });
+
+    $('#bindings-area').on('input', 'input[data-default-from]', function() {
+        $(this).data('manually-edited', true);
+    });
+
+    $('#dir_slug').on('input', function() {
+        $(this).data('manually-edited', true);
+        validateSlug();
+        updateProjectDir();
+        scheduleDirCheck();
+        var slug = $(this).val();
+        $('input[data-default-from="dir_slug"]').each(function() {
+            if (!$(this).data('manually-edited')) {
+                $(this).val(slug);
+            }
+        });
+    });
+
+    $('#dir_slug').on('blur', function() {
+        validateSlug();
+    });
+
+    $('#base_dir').on('input change', function() {
+        updateProjectDir();
+        scheduleDirCheck();
+    });
+
+    $('#btn-regen-slug').on('click', function() {
+        $('#dir_slug').data('manually-edited', false);
+        $('#dir_slug').val(slugify($('#project_name').val()));
+        validateSlug();
+        updateProjectDir();
+        scheduleDirCheck();
+    });
+
+    $('#btn-pick-dir').on('click', function() {
+        if (typeof JieDirPicker !== 'undefined') {
+            JieDirPicker.open({
+                initialPath: $('#base_dir').val() || 'D:/',
+                onSelect: function(path) {
+                    $('#base_dir').val(path);
+                    updateProjectDir();
+                    scheduleDirCheck();
+                }
+            });
+        } else {
+            layui.layer.alert('目录选择器未加载，请手动输入路径');
+        }
+    });
+
+    function showBindingErrors(errors) {
+        $('#bindings-area .binding-error').addClass('d-none').find('.binding-error-msg').text('');
+        if (!errors || !errors.length) return;
+        var grouped = {};
+        for (var i = 0; i < errors.length; i++) {
+            var pk = errors[i].provider_key || '';
+            if (!grouped[pk]) grouped[pk] = [];
+            grouped[pk].push(errors[i].message || errors[i]);
+        }
+        var html = [];
+        if (grouped['']) {
+            for (var j = 0; j < grouped[''].length; j++) html.push(grouped[''][j]);
+        }
+        for (var pk in grouped) {
+            if (!pk) continue;
+            var $card = $('#bindings-area .binding-form[data-provider-key="' + pk + '"]');
+            if ($card.length) {
+                var $err = $card.find('.binding-error').removeClass('d-none');
+                var msgs = grouped[pk];
+                $err.find('.binding-error-msg').html(msgs.join('<br>'));
+            } else {
+                for (var k = 0; k < grouped[pk].length; k++) html.push(grouped[pk][k]);
+            }
+        }
+        if (html.length) {
+            var $top = $('.container-fluid > .alert.alert-danger').last();
+            if (!$top.length || !$top.data('global-err')) {
+                $top = $('<div class="alert alert-danger" data-global-err="1"><i class="fa-solid fa-circle-exclamation mr-1"></i><strong>其他错误：</strong><ul class="mb-0 mt-2 pl-3"></ul></div>');
+                $('.container-fluid').prepend($top);
+            }
+            $top.find('ul').html('');
+            for (var m = 0; m < html.length; m++) {
+                $top.find('ul').append($('<li>').text(html[m]));
+            }
+        }
+        $('html, body').animate({scrollTop: $('#bindings-area').offset().top - 80}, 300);
+    }
+
+    function clearBindingErrors() {
+        $('#bindings-area .binding-error').addClass('d-none').find('.binding-error-msg').text('');
+        $('.container-fluid [data-global-err="1"]').remove();
+    }
+
+    function validateBindings() {
+        var missing = [];
+        $('#bindings-area .binding-form.mode-edit').removeClass('mode-edit');
+        $('#bindings-area .binding-form').each(function() {
+            var $card = $(this);
+            var pk = $card.data('provider-key');
+            var $summary = $card.find('.mode-summary');
+            if ($summary.is(':hidden')) {
+                $card.addClass('mode-edit');
+                $summary.show();
+                $card.find('.mode-form').hide();
+                var $btn = $card.find('.binding-btn-edit');
+                $btn.find('.btn-label').text('编辑');
+                $btn.find('i').removeClass('fa-check').addClass('fa-pen-to-square');
+            }
+            refreshSummary($card);
+        });
+        var $warns = $('#bindings-area .summary-value[data-state="warn"]');
+        console.log('[validateBindings] warn count:', $warns.length);
+        $warns.each(function() {
+            var $sv = $(this);
+            var $row = $sv.closest('.summary-row');
+            $row.addClass('has-error');
+            var $card = $sv.closest('.binding-form');
+            var pk = $card.data('provider-key');
+            var $label = $row.find('.summary-label');
+            var labelText = ($label.text() || '').replace(/\*/g, '').trim();
+            var providerLabel = $card.find('.card-header .font-weight-bold').text().trim();
+            console.log('[validateBindings] missing:', providerLabel, '-', labelText);
+            missing.push({
+                provider_key: pk,
+                provider_label: providerLabel,
+                field_label: labelText,
+                $card: $card
+            });
+        });
+        return missing;
+    }
+
+    $('#create-form').on('submit', function(e) {
+        e.preventDefault();
+        if (validateProjectName()) {
+            $('#project_name').focus();
+            layui.layer.msg('请填写项目名称', {icon: 2});
+            return;
+        }
+        if (validateSlug()) {
+            $('#dir_slug').focus();
+            layui.layer.msg('请修正目录名错误', {icon: 2});
+            return;
+        }
+
+        var missing = validateBindings();
+        if (missing.length) {
+            var first = missing[0];
+            var uniqueProviders = [];
+            var seen = {};
+            for (var i = 0; i < missing.length; i++) {
+                var k = missing[i].provider_label;
+                if (!seen[k]) { seen[k] = 1; uniqueProviders.push(k); }
+            }
+            layui.layer.alert(
+                '有 <strong>' + missing.length + '</strong> 个必填项未填写，涉及 <strong>' + uniqueProviders.length + '</strong> 个组件：<br><br>' +
+                uniqueProviders.map(function(l) { return '• ' + l; }).join('<br>') +
+                '<br><br>请点击对应组件卡片上的「编辑」按钮补全后再提交。',
+                { icon: 2, title: '组件配置不完整', area: ['420px', 'auto'] }
+            );
+            $('html, body').animate({scrollTop: first.$card.offset().top - 100}, 400);
+            return;
+        }
+
+        var $invalidField = $('#bindings-area').find('input.is-invalid, select.is-invalid, textarea.is-invalid').first();
+        if ($invalidField.length) {
+            $invalidField.focus();
+            layui.layer.msg('请修正组件配置中的错误后再提交', {icon: 2});
+            return;
+        }
+
+        var bindings = {};
+        $('#bindings-area .binding-form').each(function() {
+            var pk = $(this).data('provider-key');
+            var config = {};
+            $(this).find('input, select, textarea').each(function() {
+                var $el = $(this);
+                if ($el.is(':disabled')) return;
+                var n = $el.attr('name');
+                if (!n || n.indexOf('config_' + pk + '_') !== 0) return;
+                var fieldKey = n.substring(('config_' + pk + '_').length);
+                if ($el.attr('type') === 'checkbox') {
+                    config[fieldKey] = $el.is(':checked');
+                } else if ($el.attr('type') === 'number') {
+                    var numVal = parseFloat($el.val());
+                    config[fieldKey] = isNaN(numVal) ? null : numVal;
+                } else {
+                    config[fieldKey] = $el.val();
+                }
+            });
+            bindings[pk] = config;
+        });
+        $('#bindings-area .dir-with-base').each(function() {
+            var $box = $(this);
+            var pk = $box.data('fpk');
+            var field = $box.data('field');
+            var subVal = ($box.find('.dir-sub-input').val() || '').trim();
+            if (!pk || !field || !subVal) return;
+            var cfg = bindings[pk] || {};
+            cfg[field + '_sub'] = subVal;
+            bindings[pk] = cfg;
+        });
+        var actionOverrides = collectActionOverrides();
+        if (Object.keys(actionOverrides).length) {
+            bindings._action_overrides = actionOverrides;
+        }
+        $('#configs-input').val(JSON.stringify(bindings));
+
+        clearBindingErrors();
+
+        var $btn = $('#btn-submit').prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> 提交中...');
+
+        var formData = new FormData(this);
+        $.ajax({
+            url: '{% url "project_mgmt:api_create_project" %}',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(resp) {
+                if (!resp || !resp.ok) {
+                    $btn.prop('disabled', false).html('<i class="fa-solid fa-rocket"></i> 创建项目');
+                    if (resp && resp.form_errors) {
+                        var fe = resp.form_errors;
+                        var msg = '';
+                        if (fe.project_name) msg += fe.project_name + '<br>';
+                        if (fe.dir_slug) msg += fe.dir_slug + '<br>';
+                        if (fe.base_dir) msg += fe.base_dir + '<br>';
+                        if (fe.project_dir) msg += fe.project_dir + '<br>';
+                        if (fe.template_id) msg += fe.template_id + '<br>';
+                        layui.layer.alert(msg || '表单校验失败', {icon: 2, title: '提交有误'});
+                    } else {
+                        layui.layer.alert((resp && resp.error) || '提交失败', {icon: 2});
+                    }
+                    return;
+                }
+
+                var taskId = resp.task_id;
+                startTaskCleanupPoller(taskId);
+                if (typeof JieTaskLog !== 'undefined') {
+                    var resultUrl = '{% url "project_mgmt:create_result" task_id="__TASK_ID__" %}';
+                    resultUrl = resultUrl.replace('__TASK_ID__', taskId);
+                    JieTaskLog.open({
+                        title: '创建项目: ' + ($('#project_name').val() || ''),
+                        taskId: taskId,
+                        onSuccess: function() {
+                            clearWizardState();
+                            setTimeout(function() {
+                                window.location.href = resultUrl;
+                            }, 300);
+                        },
+                        onFail: function(payload) {
+                            showBindingErrors((payload || {}).errors || []);
+                            clearWizardState();
+                            $btn.prop('disabled', false).html('<i class="fa-solid fa-rocket"></i> 创建项目');
+                        }
+                    });
+                } else {
+                    layui.layer.alert('任务日志组件未加载', {icon: 2});
+                    $btn.prop('disabled', false).html('<i class="fa-solid fa-rocket"></i> 创建项目');
+                }
+            },
+            error: function(xhr) {
+                $btn.prop('disabled', false).html('<i class="fa-solid fa-rocket"></i> 创建项目');
+                layui.layer.alert('网络错误: ' + (xhr.statusText || '请稍后重试'), {icon: 2});
+            }
+        });
+    });
+
+    $('#create-form').on('input change', 'input, select, textarea', function(e) {
+        var $t = $(e.target);
+        if ($t.attr('type') === 'hidden') return;
+        if ($t.attr('type') === 'checkbox' || $t.attr('type') === 'radio') return;
+        scheduleSave();
+    });
+    $('#create-form').on('change', 'input[type="checkbox"], input[type="radio"], select', scheduleSave);
+
+    var $bd = $('#base_dir');
+    $bd.val(($bd.val() || '').replace(/\\/g, '/'));
+    if ($('#dir_slug').val()) {
+        $('#dir_slug').data('manually-edited', true);
+    }
+    updateProjectDir();
+
+    var initialTid = '{{ wizard.template_id|default:"" }}' || getSavedState()._current_template || '';
+    if (initialTid) {
+        $('#template_id_input').val(initialTid);
+        var $card = $('.template-card[data-template-id="' + initialTid + '"]');
+        if ($card.length) {
+            $card.addClass('selected').css({
+                'border': '2px solid #3b82f6',
+                'background-color': '#eff6ff',
+                'box-shadow': '0 4px 12px rgba(59,130,246,.35)'
+            });
+        }
+        loadBindings(initialTid);
+    } else {
+        $('.template-card').css('border', '2px solid transparent');
+    }
+
+    $('#btn-clear-wizard').on('click', resetWizardForm);
+    updateClearBtnVisibility();
+})();
+</script>
+{% endblock %}

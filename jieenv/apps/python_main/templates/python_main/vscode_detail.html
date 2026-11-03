@@ -1,0 +1,131 @@
+{% extends "python_main/layout.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+  var layer = layui.layer, $ = layui.$, util = layui.util;
+
+  util.on(
+      'lay-on', {
+        reDetect: function () {
+          var load = layer.load(2, {shade: 0.3, shadeClose: false});
+          $.get("{% url 'python_main:api_vscode_detail_refresh' %}", {}, function (res) {
+            layer.close(load);
+            if (res && (res.code === 0 || res.code === 200)) {
+              layer.msg('探测成功，正在刷新…', { icon: 1, time: 1000, shade: 0.3 }, function () {
+                location.reload();
+              });
+            } else {
+              layer.alert((res && res.msg) || '探测失败，请稍后重试', { icon: 2 });
+            }
+          }, 'json').fail(function () {
+            layer.close(load);
+            layer.alert('网络异常，探测失败', { icon: 2 });
+          });
+       },
+
+       startVscode: function () {
+         // 启动 VSCode：后端登记 jiecore.tasks 后台任务并回传 task_id，
+         // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
+         $.post('{% url "python_main:api_start_vscode" %}', {}).done(function (res) {
+           if (!res || !res.success) {
+             layer.msg((res && res.message) || '启动 VSCode 失败', { icon: 2, time: 4000 });
+             return;
+           }
+           JieTaskLog.open({
+             title: '启动 VSCode',
+             taskId: res.task_id,
+             onSuccess: function () {},
+             onFail: function (result) {
+               layer.msg((result && result.message) || 'VSCode 启动失败', { icon: 2, time: 5000 });
+             }
+           });
+         }).fail(function (xhr) {
+           var msg;
+           if (!xhr || !xhr.status) {
+             msg = '无法连接后台服务，请确认服务仍在运行后重试';
+           } else if (xhr.status === 403) {
+             msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+           } else {
+             msg = '启动请求失败（HTTP ' + xhr.status + '）';
+           }
+           layer.msg(msg, { icon: 2, time: 4000 });
+         });
+       },
+
+       resetDefault: function () {
+            layer.confirm(
+                '<span class="text-bold text-blue">确定要重置吗？</span></br>重置将彻底删除 VSCode 的用户配置、扩展、历史记录!</br>' +
+                '<span style="color:red;">谨慎操作！！</span>',
+                { title: '重置警告', icon: 3 },
+                function (index) {
+              layer.close(index);
+              var load = layer.load(2, {shade: 0.3, shadeClose: false});
+              $.post('{% url "python_main:api_vscode_reset" %}', {}).done(function (res) {
+                    layer.close(load);
+                    if (res && (res.code === 0 || res.code === 200)) {
+                      layer.alert(res.msg, { icon: 1, shade: 0.3 });
+                    } else {
+                      layer.alert((res && res.msg) || '重置初始化失败，请稍后重试', { icon: 2, shade: 0.3 });
+                    }
+              }).fail(function () {
+                layer.close(load);
+                layer.alert('网络异常，重置初始化失败', { icon: 2 });
+              });
+            });
+       }
+
+  });
+});
+</script>
+{% endblock %}
+
+
+{% block provider_content %}
+{% if not vscode %}
+<div class="text-danger text-bold text-lg">
+    没有找到 VSCode 信息, 请先 <a href="{% url "python_main:vscode_install" %}">下载安装</a>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-1">
+                <div style="width: 54px; height: 54px">
+                    <img src="{% static 'python_main/vscode.svg' %}" style="width: 50px; height: 50px">
+                </div>
+            </div>
+            <div class="col-md-8 text-bold text-primary"><h4>{{ vscode.DisplayName }}</h4></div>
+            <div class="col-md-3">
+                <button class="btn btn-primary" lay-on="startVscode">启动 VSCode</button>
+                <button class="btn btn-success float-right" lay-on="reDetect">重新探测</button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="text-muted">
+            <dl class="row">
+                <dt class="col-sm-2">安装模式</dt>
+                <dd class="col-sm-10">{{ vscode.installTypeLabel }}</dd>
+                <dt class="col-sm-2">版本</dt>
+                <dd class="col-sm-10">{{ vscode.DisplayVersion }}</dd>
+                <dt class="col-sm-2">安装目录</dt>
+                <dd class="col-sm-10">{{ vscode.InstallLocation }}</dd>
+            </dl>
+        </div>
+        <div class="text-right">
+
+        </div>
+    </div>
+    <div class="card-footer">
+        <div class="float-left">
+            <button class="btn btn-warning" lay-on="resetDefault">重置设置</button>
+        </div>
+        <div class="float-right">
+            <a href="{% url 'python_main:vscode_uninstall' %}" class="btn btn-danger">卸载</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

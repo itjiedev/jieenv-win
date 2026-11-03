@@ -1,0 +1,95 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<div class="card-header d-flex align-items-center p-0 mb-2 border-0">
+        <div class="mr-auto"></div>
+        <div>
+            {% if dev_tools_tabs %}
+                {% for dt in dev_tools_tabs %}
+                <a class="btn btn-outline-secondary" href="{{ dt.content_url }}">
+                    {% if dt.icon %}<i class="fa {{ dt.icon }}"></i> {% endif %}{{ dt.label }}
+                </a>
+                {% endfor %}
+            {% else %}
+                <a class="btn {% if dev_tools_is_current %}btn-info{% else %}btn-outline-info{% endif %} btn-sm"
+                   href="{% url 'python_main:dev_tools' %}">
+                    <i class="fa fa-wrench"></i> 开发工具
+                </a>
+            {% endif %}
+        <a href="{% url 'python_main:pypi_list' %}"
+           class="btn btn-outline-info btn-sm{% if current_content_name == 'python_pypi' %} active{% endif %}">
+            <i class="fas fa-cog"></i> 全局PyPi源
+        </a>
+        <button type="button" class="btn btn-outline-info btn-sm" onclick="fetch('{% url 'jiecore:api_open_env_variables' %}', {method:'POST', headers:{'X-CSRFToken': (document.cookie.match(/csrftoken=([^;]+)/)||[])[1]||''}})">
+            <i class="fa-solid fa-circle-exclamation"></i> 环境变量
+        </button>
+            <button type="button" class="btn btn-outline-info btn-sm" id="btn-clear-download-cache"
+                    data-url="{{ active_clear_cache.url }}"
+                    data-confirm="{{ active_clear_cache.confirm_text }}">
+                <i class="fas fa-broom"></i> {{ active_clear_cache.label }}
+            </button>
+         <a href="https://www.python.org/downloads/" target="_blank" class="btn btn-outline-info btn-sm">
+                <i class="fas fa-globe"></i> Python官网
+         </a>
+        </div>
+</div>
+{# ── 导航卡片：仅当存在 2 个及以上子应用时显示 ── #}
+{% if envs|length > 1 %}
+<div class="card p-0">
+    <div class="card-header d-flex align-items-center p-0 border-0">
+        <div class="mr-auto">
+            {% for env in envs %}
+            <a class="btn {% if env.is_current %}btn-info{% else %}btn-outline-info{% endif %}"
+               href="{{ env.content_url }}">
+                {{ env.label }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% block provider_content %}{% endblock %}
+{% endblock %}
+
+{# “清理缓存”按钮在 layout.html 顶部、所有 python 页面共用；子页面会覆盖 js_code， #}
+{# 故处理器放在 js_files 块（子页面不覆盖），保证每页都能响应点击。 #}
+{# 目标 URL 与确认文案由 PythonMixin 依据当前激活子应用（python.clear_cache 钩子）注入， #}
+{# 未注册子应用清理配置时回退到 python:api_clear_cache（清空 tmp/python/）。 #}
+{% block js_files %}
+<script>
+layui.use(['layer'], function () {
+    var $ = layui.$, layer = layui.layer;
+    var $btn = $('#btn-clear-download-cache');
+    var url = $btn.attr('data-url') || '{% url "python_main:api_clear_cache" %}';
+    var customConfirm = $btn.attr('data-confirm');
+    var confirmText = (customConfirm && customConfirm.length)
+        ? customConfirm
+        : '确定要清理下载缓存吗？</br>将清空python应用所有下载临时文件，' +
+          '<span class="text-muted">不影响已安装的软件。</span>';
+    $btn.on('click', function () {
+        layer.confirm(
+            confirmText,
+            { title: '清理下载缓存', icon: 3, btn: ['确定清理', '取消'] },
+            function (index) {
+                layer.close(index);
+                var load = layer.load(2, { shade: 0.3, shadeClose: false });
+                $.post(url, {}).done(function (res) {
+                    layer.close(load);
+                    if (res && res.success) {
+                        layer.msg(res.message || '清理完成', { icon: 1, time: 3000 });
+                    } else {
+                        layer.msg((res && res.message) || '清理失败，请稍后重试', { icon: 2, time: 4000 });
+                    }
+                }).fail(function (xhr) {
+                    layer.close(load);
+                    var msg = (xhr && xhr.status === 403)
+                        ? '请求被拒绝（CSRF 校验未通过），请刷新页面后重试'
+                        : '网络异常，清理失败';
+                    layer.msg(msg, { icon: 2, time: 4000 });
+                });
+            });
+    });
+});
+</script>
+{% endblock %}

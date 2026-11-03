@@ -1,0 +1,85 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+{#        <span class="badge badge-info py-2"><i class="fa fa-cog"></i> 应用设置</span>#}
+    </div>
+    <div class="card-tools">
+{#        <a href="{% url 'dbmysql:index' %}" class="btn btn-default btn-sm"><i class="fa fa-arrow-left"></i> 返回首页</a>#}
+    </div>
+</div>
+
+<div class="card card-primary card-outline">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-folder-open"></i> 默认安装目录</h3></div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            安装 MySQL 时的默认根目录。实际会安装到该目录下的 <code>mysql-&lt;版本号&gt;-winx64</code> 子目录中。
+            <br>修改后对新安装生效，已有实例不受影响。
+        </p>
+        <form id="settings-form">
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">安装根目录</label>
+                <div class="col-sm-9">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="cfg-install-dir"
+                               value="{{ config.install_dir|default:'' }}">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-browse-install-dir">
+                                <i class="fa fa-folder-open"></i> 浏览</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group row mb-0">
+                <div class="col-sm-9 offset-sm-3">
+                    <button type="button" id="btn-save" class="btn btn-primary">
+                        <i class="fa fa-save"></i> 保存设置</button>
+                    <a href="{% url 'dbmysql:index' %}" class="btn btn-default">取消</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    $('#btn-browse-install-dir').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 MySQL 默认安装根目录',
+            initialPath: $('#cfg-install-dir').val().trim(),
+            onSelect: function (path) {
+                $('#cfg-install-dir').val(path);
+            }
+        });
+    });
+
+    $('#btn-save').on('click', function () {
+        var installDir = $('#cfg-install-dir').val().trim();
+        if (!installDir) {
+            msg('请填写安装目录', false);
+            return;
+        }
+        var loadIdx = layui.layer.msg('正在操作，请稍候...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.post('{% url "dbmysql:api_settings_save" %}',
+            {install_dir: installDir}
+        ).done(function (res) {
+            layui.layer.close(loadIdx);
+            msg(res.message, res.success);
+        }).fail(function () {
+            layui.layer.close(loadIdx);
+            msg('请求失败', false);
+        });
+    });
+});
+</script>
+{% endblock %}

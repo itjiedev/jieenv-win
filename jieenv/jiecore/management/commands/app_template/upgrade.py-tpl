@@ -1,0 +1,72 @@
+"""
+{{ app_name }} 升级程序
+
+应用升级时由 jiecore 框架自动调用，用于执行 migrations 无法覆盖的自定义逻辑
+（数据转换、配置迁移、格式变更等）。
+
+执行时机：
+    1. 应用文件已被新版本覆盖
+    2. 数据库迁移（migrate）已执行完成
+    3. → 此时调用 upgrade(old_version, new_version)
+    4. 调用成功后才更新版本号与缓存；抛异常则回滚文件
+
+约定：
+    - 文件可选：删除本文件时框架跳过此步骤
+    - 必须使用绝对导入（如 from apps.{{ app_name }}.models import Xxx），
+      不支持相对导入（本文件按路径加载，不属于应用包模块）
+    - 升级逻辑用 _parse_version(old_version) < (x, y, z) 做范围判断，
+      确保跳版本升级时所有中间变更都能依次执行
+    - 尽量幂等：重复执行不产生副作用
+"""
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_version(version: str) -> tuple:
+    """将版本号解析为数字元组（如 '1.2.0' -> (1, 2, 0)）"""
+    return tuple(int(x) for x in version.split('.') if x.isdigit())
+
+
+def upgrade(old_version: str, new_version: str) -> None:
+    """
+    应用自定义升级逻辑。
+    抛出任何异常视为升级失败，框架会自动回滚文件。
+
+    参数:
+        old_version: 升级前版本号，如 '1.0.0'
+        new_version: 升级后版本号，如 '2.0.0'
+    """
+    logger.info('{{ app_name }} 升级: %s -> %s', old_version, new_version)
+
+    # ── 按版本分段执行，用 < 判断确保跳版本也能覆盖全部中间变更 ──
+
+    # 示例：1.0.x -> 1.1.0 所需的数据修正
+    # if _parse_version(old_version) < (1, 1, 0):
+    #     _step_1_1_0()
+
+    # 示例：1.x -> 2.0.0 所需的配置迁移
+    # if _parse_version(old_version) < (2, 0, 0):
+    #     _step_2_0_0()
+
+    logger.info('{{ app_name }} 升级逻辑执行完成')
+
+
+# ── 各版本段的升级子任务（取消注释并按需修改） ──────────────────
+
+
+# def _step_1_1_0():
+#     """1.1.0: 示例——给历史数据补充默认值"""
+#     from apps.{{ app_name }}.models import MyModel
+#     updated = MyModel.objects.filter(status__isnull=True).update(status='normal')
+#     logger.info('1.1.0 数据修正完成，共更新 %d 条', updated)
+
+
+# def _step_2_0_0():
+#     """2.0.0: 示例——初始化新版本所需的配置文件"""
+#     from django.conf import settings
+#     from pathlib import Path
+#     config_file = Path(settings.APPS_DIR) / '{{ app_name }}' / 'config.json'
+#     if not config_file.exists():
+#         config_file.write_text('{}', encoding='utf-8')
+#         logger.info('2.0.0 已生成默认配置文件')

@@ -1,0 +1,184 @@
+﻿v1.50.1
+- 修复打包BUG
+---------------------------------------
+v1.50.0
+- project_mgmt v0.9.0：打开终端功能完整链路（详情页按钮 + 项目列表快捷图标）
+  · env_hints 从 provider binding 实时收集（优先 storage invoke，次选 snapshot 读取）
+  · cmd.exe /k 执行 activate_cmd + subprocess env PATH 前置双重保险
+  · 支持 venv 模式（activate.bat）和直接指定 Python 模式（PATH_prepend 解释器目录）
+  · 项目列表页新增三个便捷图标按钮（打开终端 + 打开目录 + 复制路径）
+- python_main v1.21.0：env_hints 补全非 venv 模式 + verify 容错
+  · get_env_hints 新增 use_venv=False 分支，返回 PATH_prepend=[python_exe 目录]
+  · lifecycle.verify 新增 use_venv 字段，venv_dir 改为非必填
+  · verify_venv 新增 use_venv 参数，非 venv 模式直接返回 success=True
+---------------------------------------
+v1.49.0
+- project_mgmt v0.8.0：聚合层 provider 降级检测（贡献者全灭时显示启用/安装按钮）
+- python_main v1.20.0：provider 自声明 contributor_name_prefix
+- python_archive v1.6.0：补全 provider 注册（与 python_installer 同级对齐）
+---------------------------------------
+v1.48.0
+- project_mgmt v0.7.0：快照 schema 从 v1 升级到 v2，自包含零推断三大致命缺陷全部修复
+  （binding_type 区分 provider/action + invoke_action 自包含 + action binding 全量存 config）
+- 新增 rebuild_from_snapshot：快照 → 环境重建能力，为 Phase B 拓扑视图 + scanner 导入 + 远程恢复打下基础
+---------------------------------------
+v1.47.0
+- jiecore v1.35.0：verify 能力跳过 provider_catalog 健康缓存短路，确保异常探测拿真实结果
+- dbmysql v1.13.0：端口探测前置 + MySQL errno 四种异常细分（AUTH_FAILED/SERVICE_DOWN/SERVICE_GONE/INSTANCE_NOT_FOUND）+ 自愈协议 verify_code/verify_hint/remedy 全链路
+- project_mgmt v0.6.0：详情页异常分类与原地自愈 UI（红色文字、无分隔线、remedy.type 通用渲染自愈按钮）
+---------------------------------------
+v1.45.0
+- jiecore v1.33.0：app_services 新增 reload_app_services，enable_app 末尾重注册 service，
+  修复"应用禁用再启用后 service 丢失"（python_installer 禁用→启用后创建项目页面版本下拉恢复）
+- python_main v1.19.0：升级为 T2 领域聚合层（is_platform_fixed=True），菜单动态显隐
+  （app_meta 内联 _has_child_apps 查询 DB 中的已启用依赖应用）
+---------------------------------------
+v1.43.0
+- project_mgmt v0.3.1：详情页健康状态从同步串行探测改为前端异步探测，首屏渲染速度从
+  秒级（MySQL TCP 超时 × N 组件）降到毫秒级，页面加载后 300ms 自动触发健康探测
+---------------------------------------
+v1.42.0
+- 修改各应用架构
+- 添加并完成项目管理闭环
+---------------------------------------
+v1.40.0
+- python_installer / python_archive：虚拟环境列表页打开时自动后台异步刷新状态和包数
+  （runVerify 抽函数 + 页面加载 setTimeout 300ms 静默触发，不阻塞首屏、不打扰用户）
+-------------------------
+v1.39.0
+- python_main v1.17.0：Phase 0 预埋（venv_utils 纯工具层 3 函数 + 6 app_services + ext_hooks.py Python runtime_provider）
+-------------------------
+v1.38.0
+- python_installer v1.14.1：虚拟环境链路 5 个 Bug 修复（pip 安装跳转缺失 url_list / 打开终端缺 _terminal_cmd / 锁定参数不匹配 / 彻底删除参数名错 / 刷新验证传 dict 而非路径）
+-------------------------
+v1.37.0
+- python_archive v1.4.15：锁图标前置、列宽优化、解释器路径行内紧凑布局
+-------------------------
+v1.36.0
+- python_archive v1.4.14：锁定状态下卸载/删除按钮置灰禁用
+-------------------------
+v1.35.0
+- python_archive v1.4.13：新增卸载/删除锁功能，归属解释器和虚拟环境各有独立锁开关
+-------------------------
+v1.34.0
+- python_archive v1.4.12：新增虚拟环境管理功能（每个 Python 实例专属 venv 管理页，
+  支持创建/导入/删除/重命名、两级异步状态验证、复用 python_main pip 架构包管理、
+  严格卸载检查开关、级联清理、前端预判拦截等）
+- python_main v1.16.1 / python_installer v1.13.2 / python_archive v1.3.3：
+  pip_envs 高频路径优化（call_service 精确调用 + storage _by_id_cache 内存缓存）
+- dbmysql v1.12.2：批量修正 layer.load 不支持 text 参数问题
+-------------------------
+v1.33.9
+- 新增 requirements.txt 导出通用能力（python_main v1.16.0）：
+  pip_manager.export_requirements 封装 pip freeze、通用 pip API 新增
+  api_pip_requirements_export 接口、pywebview 桌面环境原生下载桥接
+  （desktop.py 开启 ALLOW_DOWNLOADS=True），贡献者应用 python_installer /
+  python_archive 通过 PipListViewMixin 自动获得导出按钮
+- 平台版本 bump 触发：骨架应用 python_main 升级（1.15.0 → 1.16.0）
+-------------------------
+v1.33.8
+- python_archive v1.3.2 / python_installer v1.13.1：清理 python_main.storage
+  死代码、补全 python_archive 依赖声明（python_main + mainapp）、
+  build_platform.bat 新增 --upgrade-sfx 参数
+- 平台版本 bump 触发：骨架应用 python_archive 升级（1.3.1 → 1.3.2）
+
+-------------------------
+v1.33.7
+- 全链路闭环验证通过：SFX 自解压覆盖安装 + 平台内升级 + 应用升级三条路径
+- 清理两端临时文件（_bump.py 版本号脚本、旧版 zip/exe 产物、__pycache__ 目录）
+- version_manager.py finally 块结构统一：tmp_dir 用 shutil.rmtree + zip_file 用 unlink，
+  成功失败均自动清理上传包，彻底消除"安装包检测"误导问题
+- SFX upgrade_platform.py 双重 migrate + refreshcache --sync 顺序死锁彻底打通：
+  第一次 migrate 建基础表 → refreshcache --sync 从磁盘扫 AppRegistry 写缓存
+  → 第二次 migrate 建新增 app 全量表
+- 两端 app_meta.py platform_version 一致性校验通过，确认单一真值源生效
+
+-------------------------
+v1.33.6
+- 确认 WinRAR 7.x 不识别 -iicon 图标嵌入参数，移除 build_platform.bat 中所有
+  图标相关代码（原计划给 SFX 自解压包嵌入自定义图标）
+- _build_helper.py scan_platform_items_for_staging 固定文件列表补全 jieenv/manage.py，
+  解决 zip 和 SFX 都漏打 manage.py 的问题
+- build_platform.bat 新增 items 循环的正斜杠→反斜杠转换 (!DST:/=\!)，
+  解决 cmd.exe copy 命令不识别正斜杠路径
+
+-------------------------
+v1.33.5
+- 修复平台内升级报错 FileNotFoundError: [Errno 2] No such file or directory
+  '...tmp/upgrade/platform-xxx.zip'
+  根因：version_manager.py 升级流程开始前清理 UPGRADE_TMP_DIR 时无差别全清，
+  把用户刚上传、尚未解压的升级包也一起删了
+  修复：改为遍历 UPGRADE_TMP_DIR 子项逐个清理，通过 Path.resolve() 对比
+  跳过当前正在使用的 zip 文件；upgrade_platform_from_zip 和 upgrade_from_zip
+  两处入口同步修复
+- 升级任务异常时 finally 块清理升级包，防止下次重试时仍使用旧缓存残留
+
+-------------------------
+v1.33.4
+- 修复平台升级备份时递归嵌套导致 WinError 206（文件名或扩展名太长）
+  根因：UPGRADE_TMP_DIR 位于被备份的 jieenv/tmp/upgrade 内部，copytree 没有排除目标路径，
+  导致 platform_backup/jieenv 里又复制出 tmp/upgrade/platform_backup/jieenv，无限嵌套
+- 新增 _make_ignore(*dirs) 辅助函数，所有 copytree 统一排除 UPGRADE_TMP_DIR
+  Django 进程内（version_manager.py）+ SFX 独立脚本（upgrade_platform.py）两边同步修复
+- 每次升级开始前先物理清空 jieenv/tmp/upgrade/ 整个目录，彻底消除历次升级残留垃圾
+  （上次失败的递归嵌套备份、临时解压目录、残留的 xxx_backup 等）
+  三处入口统一：SFX 独立脚本、平台内升级、应用内升级
+- 修复 upgrade_platform.py 的 subprocess 输出乱码问题
+  之前所有 subprocess.run 硬编码 encoding='utf-8'，但 Django manage.py 在 cmd.exe
+  下实际走 OEM 代码页（中文 cp936），导致错误信息全部乱码看不见真正原因
+  改用 GetOEMCP() 获取系统 OEM 编码（同 jiecore.utils.get_cmd_encoding 实现），
+  capture_output=True 拿 bytes 后手动解码，stdout/stderr 合并输出
+- 修复 SFX 升级时 migrate 因"应用注册表缓存文件缺失"而直接退出的问题
+  根因：bootstrap.py 在缓存缺失时 exit(1)，而 SFX 首次覆盖时用户可能没有缓存文件，
+  migrate / checkdeps / apprescan 也无法启动 Django，形成鸡生蛋死锁
+  解法：bootstrap._RECOVERY_COMMANDS 扩展，migrate / checkdeps / apprescan 均可绕开
+  缓存检查启动 Django；SFX 升级步骤改为：migrate（基础表）→ refreshcache --sync
+  （从磁盘扫 AppRegistry 写缓存）→ migrate（新 app 全量表）
+-------------------------
+v1.33.2
+- 修复平台升级 / 应用升级完成后上传的 zip 包残留导致"安装包检测"误导的问题
+- zip 清理从 success 分支移至 finally 块，成功失败均自动清理上传包
+- 确立每次发版必须递增 platform_version 的规范，打包脚本从 app_meta.py 动态读取版本号
+-------------------------
+v1.33.1
+- 修复平台升级备份目录未显式创建导致的 WinError 3（zip 顶层首条为文件时 copy2 失败）
+- 修复 build_platform.bat items 循环两处 cmd 路径处理 bug：
+  1) !DST:~0,-1! 假设末尾带斜杠，实际 items 输出不带 → 文件名截断生成 server.p、requirements.tx 等垃圾目录
+  2) copy 命令不识别正斜杠路径 → 统一替换为反斜杠
+- _build_helper.py scan_platform_items_for_staging 文件列表补 jieenv/manage.py
+- 修复 SFX 自解压 upgrade 模式 goto :upgrade_show_result label 断裂，统一跳转 :upgrade_only_zip
+- 打包注释补全：新增 --upgrade-zip / --platform-install 用法、items 循环父目录创建机制说明
+-------------------------
+v1.33.0
+- 所有业务应用安装、应用升级、平台升级全链路接入实时进度反馈
+- 底层 pip 依赖安装、数据库迁移、文件复制、注册、热加载、钩子等每一步
+  均输出阶段名 + 耗时，安装/升级不再只有转圈无任何提示
+- HTTP 接口接入 jiecore.tasks 后台任务框架，前端 JieTaskLog 弹窗直接复用
+  （原本就有，之前被同步阻塞浪费了），零额外前端开发
+- python_main 安装耗时根因定位：pip 安装 requests 包（无国内镜像源时走公网，
+  PIP_INSTALL_TIMEOUT=600s）+ migrate 执行。进度日志每步打印耗时，
+  安装时即可直观暴露瓶颈
+-------------------------
+v1.32.1
+- 废弃 is_core / is_core_app 标记体系，与 is_platform_fixed 合并：删除 _CORE_APP_CACHE、
+  删除 is_core_app() 函数、删除所有 app_meta.py 中的 is_core 字段；骨架保护语义
+  （不可禁用/卸载/删除 + 平台升级后处理）统一归并到 is_platform_fixed 单一标记
+- 统一升级后处理：新增 _post_upgrade_app(app_name, *, old_version, new_version,
+  skip_pip) 内部函数，封装 迁移→钩子→pip→注册→缓存三件套→热加载 全链路；
+  upgrade_from_zip 和 upgrade_platform_from_zip 共用，消除重复代码
+- 修复平台升级 run_app_upgrade_hook 参数 bug：原从覆盖后磁盘读 old_version
+  导致 old=new，现覆盖前先收集各固定APP旧版本，钩子传正确 old→new
+- 修复平台升级每个固定APP处理后漏调 refresh_cache_from_db
+- appmanage/detail.html 删除冗余 {% if not app.is_core %} 外层包裹
+-------------------------
+v1.32.0
+- 新增独立的平台升级包通道：platform-<version>.zip，与应用升级包并行
+- 平台升级包解压后无白名单直接覆盖根目录对应文件
+- 平台升级后自动处理 jiecore / mainapp / python_main / python_archive
+  的迁移、钩子、pip 依赖、注册信息更新与缓存刷新
+- 新增独立平台升级页面（上传 zip + 检测到的平台包列表）
+- 废弃 jiecore 升级自动附带 PLATFORM_FILES 的旧机制
+- 平台版本单一真值源迁移到 mainapp/app_meta.py 的 platform_version 字段
+-------------------------
+v1.31.0
+- 引入平台版本统一管理，version 文件废弃
