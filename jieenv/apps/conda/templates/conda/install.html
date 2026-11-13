@@ -1,0 +1,196 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card card-success card-outline" id="install-form-card">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-download"></i> 下载安装 Conda</h3></div>
+    <div class="card-body">
+        <form id="install-form">
+            <div class="form-group row">
+                <label class="col-sm-2 col-form-label">发行版类型</label>
+                <div class="col-sm-10">
+                    <select class="form-control" id="opt-installer">
+                        {% for inst in installers %}
+                        <option value="{{ inst.key }}">{{ inst.name }} — {{ inst.description }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-2 col-form-label">下载源</label>
+                <div class="col-sm-10">
+                    <select class="form-control" id="opt-mirror">
+                        {% for m in installers.0.mirrors %}
+                        <option value="{{ m.id }}"{% if m.recommended %} selected{% endif %}>{{ m.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-text text-muted">国内镜像下载更快，国外镜像可做备用</small>
+                </div>
+            </div>
+            <div class="form-group row">
+                <label class="col-sm-2 col-form-label">安装目录</label>
+                <div class="col-sm-10">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="opt-install-dir" value="{{ default_install_dir }}" placeholder="选择安装目录">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-browse-dir">
+                                <i class="fa fa-folder-open"></i> 浏览
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">默认安装到 {{ default_install_root }}，自动按发行版追加子目录</small>
+                </div>
+            </div>
+
+            <div class="form-group row mb-0">
+                <div class="col-sm-10 offset-sm-2">
+                    <button type="button" id="btn-start-install" class="btn btn-success">
+                        <i class="fa fa-play"></i> 开始下载并安装
+                    </button>
+                    <a href="{% url 'conda:distro_list' %}" class="btn btn-default">返回</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+var INSTALLERS = {{ installers_json|safe }};
+var DEFAULT_SUBDIRS = {{ default_subdirs_json|safe }};
+var DEFAULT_INSTALL_ROOT = '{{ default_install_root }}';
+var API_DOWNLOAD_INSTALL = '{% url "conda:api_download_install" %}';
+var API_INSTALLATIONS = '{% url "conda:api_installations" %}';
+var URL_DISTRO_CONFIG = '{% url "conda:distro_config" distro_id="__ID__" %}';
+</script>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    var DEFAULT_DIR = $('#opt-install-dir').val().trim();
+
+    function buildInstallDir(parentDir, installerKey) {
+        var subdir = DEFAULT_SUBDIRS[installerKey] || '';
+        if (!subdir) return parentDir;
+        if (!parentDir) return subdir;
+        var sep = parentDir.indexOf('/') !== -1 ? '/' : '\\';
+        return parentDir.replace(/[\\\/]+$/, '') + sep + subdir;
+    }
+
+    $('#opt-installer').on('change', function () {
+        var sel = $(this).val();
+        var inst = INSTALLERS.find(function (x) {
+            return x.key === sel;
+        });
+        if (!inst) return;
+        $('#opt-mirror').html(inst.mirrors.map(function (m) {
+            return '<option value="' + m.id + '"' + (m.recommended ? ' selected' : '') + '>' + m.label + (m.recommended ? ' (推荐)' : '') + '</option>';
+        }).join(''));
+
+        var curDir = $('#opt-install-dir').val().trim();
+        var newDefault = buildInstallDir(DEFAULT_INSTALL_ROOT, sel);
+        if (curDir === DEFAULT_DIR || curDir === newDefault || !curDir) {
+            $('#opt-install-dir').val(newDefault);
+            DEFAULT_DIR = newDefault;
+        } else {
+            var parentDir = curDir.replace(/[\\\/][^\\\/]+$/, '') || DEFAULT_INSTALL_ROOT;
+            var rebuilt = buildInstallDir(parentDir, sel);
+            $('#opt-install-dir').val(rebuilt);
+            DEFAULT_DIR = rebuilt;
+        }
+    });
+
+    $('#btn-browse-dir').on('click', function () {
+        JieDirPicker.open({
+            title: '选择安装目录（将自动追加发行版子目录）',
+            initialPath: $('#opt-install-dir').val().trim(),
+            onSelect: function (path) {
+                var sel = $('#opt-installer').val();
+                var dir = buildInstallDir(path, sel);
+                $('#opt-install-dir').val(dir);
+                DEFAULT_DIR = dir;
+            }
+        });
+    });
+
+    $('#btn-start-install').on('click', function () {
+        var installerKey = $('#opt-installer').val();
+        var mirrorId = $('#opt-mirror').val();
+        var dir = $('#opt-install-dir').val().trim();
+        if (!dir) {
+            msg('请填写安装目录', false);
+            return;
+        }
+        var installer = INSTALLERS.find(function (x) {
+            return x.key === installerKey;
+        });
+        if (!installer) {
+            msg('未知的发行版', false);
+            return;
+        }
+
+        var layer = layui.layer;
+        $.get(API_INSTALLATIONS).done(function (ir) {
+            var existingCount = (ir && ir.success && ir.data) ? ir.data.length : 0;
+            var warnHtml = '';
+            if (existingCount > 0) {
+                warnHtml = '<div style="color:#d9534f;margin:6px 0;padding:8px;background:#fdf2f2;border:1px solid #f5c6cb;border-radius:4px;">' +
+                    '<i class="fa fa-exclamation-triangle"></i> 已登记 <b>' + existingCount + '</b> 个发行版，多个发行版共享同一配置目录可能导致混乱，<b>建议只保留一个</b>。' +
+                    '</div>';
+            }
+
+            layer.confirm(
+                warnHtml +
+                '即将下载并安装 <b>' + installer.name + '</b><br>' +
+                '到目录: <code>' + dir + '</code><br>' +
+                '下载源: ' + $('#opt-mirror option:selected').text(),
+                {icon: 3, title: existingCount > 0 ? '确认安装（多发行版）' : '确认安装'}, function (idx) {
+                    layer.close(idx);
+                    $.post(API_DOWNLOAD_INSTALL, {
+                        installer: installerKey, mirror_id: mirrorId, install_dir: dir
+                    }).done(function (res) {
+                        if (!res.success) {
+                            msg(res.message || '启动失败', false);
+                            return;
+                        }
+                        JieTaskLog.open({
+                            title: '下载安装 ' + installer.name,
+                            taskId: res.task_id,
+                            onSuccess: function () {
+                                $.get(API_INSTALLATIONS).done(function (ir) {
+                                    if (ir && ir.success) {
+                                        var match = ir.data.find(function (x) {
+                                            return (x.install_dir || '').toLowerCase() === dir.toLowerCase();
+                                        });
+                                        if (match && match.id) {
+                                            window.location.href = URL_DISTRO_CONFIG.replace('__ID__', match.id);
+                                            return;
+                                        }
+                                    }
+                                    window.location.href = '{% url "conda:distro_list" %}';
+                                }).fail(function () {
+                                    window.location.href = '{% url "conda:distro_list" %}';
+                                });
+                            }
+                        });
+                    }).fail(function () {
+                        msg('请求失败', false);
+                    });
+                }
+            );
+        });
+    });
+})
+</script>
+{% endblock %}

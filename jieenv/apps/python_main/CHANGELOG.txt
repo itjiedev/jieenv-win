@@ -1,4 +1,4 @@
-﻿v1.21.0
+v1.21.0
 - runtime.python provider env_hints 补全「直接指定 Python 解释器」模式（use_venv=False）：
   get_env_hints 新增 use_venv=False 分支，返回 PATH_prepend=[python_exe 所在目录]，
   让终端打开后 python/pip 命令直接命中项目配置的解释器，无需 venv 激活

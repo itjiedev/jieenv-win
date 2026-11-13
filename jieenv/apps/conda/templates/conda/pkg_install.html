@@ -1,0 +1,393 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <span class="badge badge-info py-2">
+            <i class="fa fa-bug"></i> {{ installation.display_name|default:"未知" }}
+            {% if installation.version %}（{{ installation.version }}）{% endif %}
+        </span>
+        <small class="text-muted ml-2" title="{{ env_prefix }}">
+            <i class="fa fa-folder"></i> {{ env_prefix }}
+        </small>
+    </div>
+    <div>
+        <a href="{% url 'conda:env_manage' distro_id=distro_id %}" class="btn btn-sm btn-outline-secondary">
+            <i class="fa fa-arrow-left"></i> 返回环境管理
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-9">
+        <div class="card card-primary card-outline card-outline-tabs">
+            <div class="card-header p-0 border-bottom-0">
+                <ul class="nav nav-tabs">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="tab" href="#tab-presets"><i class="fa fa-gift"></i> 常用包推荐</a>
+                    </li>
+                    {% if not is_base_env %}
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="tab" href="#tab-search"><i class="fa fa-search"></i> 搜索安装</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+            <div class="card-body p-3">
+                <div class="tab-content">
+
+                    <div class="tab-pane fade show active" id="tab-presets">
+                        <div class="mb-4">
+                            <h5 class="mb-3"><i class="fa fa-star text-warning"></i> 一键套装</h5>
+                            <div class="row">
+                                {% for key, bundle in package_bundles.items %}
+                                <div class="col-12 col-md-6 mb-3">
+                                    <div class="card border-primary h-100">
+                                        <div class="card-body d-flex flex-column">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <span style="font-size:24px">{{ bundle.icon }}</span>
+                                                <strong class="ml-2">{{ bundle.label }}</strong>
+                                            </div>
+                                            <p class="text-muted small flex-grow-1 mb-2">{{ bundle.desc }}</p>
+                                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                                {% for pkg_name in bundle.packages %}
+                                                <span class="badge badge-light border">{{ pkg_name }}</span>
+                                                {% endfor %}
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-primary btn-add-bundle" data-bundle="{{ key }}">
+                                                <i class="fa fa-plus"></i> 全部加入（{{ bundle.packages|length }}）
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3"><i class="fa fa-th-large text-info"></i> 分类浏览</h5>
+                        <div class="accordion" id="categoryAccordion">
+                            {% for cat_key, category in package_categories.items %}
+                            <div class="card mb-2">
+                                <div class="card-header p-2" id="catHead-{{ cat_key }}">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <a data-toggle="collapse" href="#catBody-{{ cat_key }}" class="text-dark" aria-expanded="true">
+                                            <span style="font-size:18px">{{ category.icon }}</span>
+                                            <strong>{{ category.label }}</strong>
+                                            <span class="badge badge-secondary ml-1">{{ category.packages|length }}</span>
+                                        </a>
+                                        <button type="button" class="btn btn-xs btn-outline-primary btn-add-category" data-cat="{{ cat_key }}">
+                                            <i class="fa fa-plus"></i> 全部加入
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="catBody-{{ cat_key }}" class="collapse show" data-parent="#categoryAccordion">
+                                    <div class="card-body p-3">
+                                        <div class="row">
+                                            {% for pkg in category.packages %}
+                                            <div class="col-6 col-md-4 mb-2">
+                                                <div class="d-flex align-items-center border rounded p-2 pkg-preset-item" style="min-width:0">
+                                                    <span style="font-size:18px;flex-shrink:0" class="mr-2">{{ pkg.icon }}</span>
+                                                    <div style="flex:1;min-width:0">
+                                                        <div class="text-truncate" title="{{ pkg.name }}">{{ pkg.name }}</div>
+                                                        <small class="text-muted text-truncate d-block" title="{{ pkg.desc }}">{{ pkg.desc }}</small>
+                                                    </div>
+                                                    <button type="button" class="btn btn-xs btn-outline-primary btn-add-pkg ml-2" style="flex-shrink:0" data-name="{{ pkg.name }}">
+                                                        <i class="fa fa-plus"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% if not is_base_env %}
+                    <div class="tab-pane fade" id="tab-search">
+                        <div class="input-group mb-3">
+                            <input type="text" id="search-input" class="form-control"
+                                   placeholder="输入包名关键词，如 pandas、numpy..." autocomplete="off">
+                            <div class="input-group-append">
+                                <button class="btn btn-primary" id="btn-search" type="button">
+                                    <i class="fa fa-search"></i> 搜索
+                                </button>
+                            </div>
+                        </div>
+                        <div id="search-results" class="list-group" style="max-height:560px; overflow-y:auto">
+                            <div class="text-center text-muted py-4">输入关键词开始搜索包</div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3">
+        <div class="card border-info">
+            <div class="card-header bg-info text-white py-2">
+                <i class="fa fa-shopping-cart"></i>
+                <strong>安装队列</strong>
+                <span id="queue-count" class="badge badge-light ml-1">0</span>
+            </div>
+            <div class="card-body p-2">
+                <ul id="queue-list" class="list-group list-group-flush">
+                    <li class="list-group-item text-center text-muted py-3">暂无包</li>
+                </ul>
+            </div>
+            <div class="card-footer p-2">
+                <button type="button" id="btn-install" class="btn btn-success btn-block" disabled>
+                    <i class="fa fa-play"></i> 开始安装
+                </button>
+                <button type="button" id="btn-clear-queue" class="btn btn-sm btn-outline-secondary btn-block mt-2" disabled>
+                    <i class="fa fa-trash"></i> 清空队列
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var DISTRO_ID = '{{ distro_id|escapejs }}';
+    var ENV_PREFIX = '{{ env_prefix|escapejs }}';
+    var ENV_NAME = '{{ env_name|escapejs }}';
+    var API_SEARCH_PACKAGES = '{% url "conda:api_search_packages" %}';
+    var API_SEARCH_VERSIONS = '{% url "conda:api_search_versions" %}';
+    var API_INSTALL_PKG = '{% url "conda:api_install_pkg" %}';
+    var ENV_MANAGE_URL = '{% url "conda:env_manage" distro_id=distro_id %}';
+
+    var PACKAGE_CATEGORIES = {{ package_categories_json|safe }};
+    var PACKAGE_BUNDLES = {{ package_bundles_json|safe }};
+
+    var queue = [];
+    var searchTimer = null;
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    function inQueue(name) {
+        var lower = name.toLowerCase();
+        for (var i = 0; i < queue.length; i++) {
+            if (queue[i].name.toLowerCase() === lower) return true;
+        }
+        return false;
+    }
+
+    function addToQueue(name, version) {
+        if (inQueue(name)) {
+            msg(name + ' 已在队列中', false);
+            return false;
+        }
+        queue.push({name: name, version: version || ''});
+        renderQueue();
+        return true;
+    }
+
+    function renderQueue() {
+        var $list = $('#queue-list');
+        $('#queue-count').text(queue.length);
+        $('#btn-install').prop('disabled', queue.length === 0);
+        $('#btn-clear-queue').prop('disabled', queue.length === 0);
+        if (queue.length === 0) {
+            $list.html('<li class="list-group-item text-center text-muted">暂无包</li>');
+            return;
+        }
+        $list.empty();
+        for (var i = 0; i < queue.length; i++) {
+            var item = queue[i];
+            var verText = item.version && item.version !== 'latest' ? '=' + item.version : '最新';
+            $list.append(
+                '<li class="list-group-item d-flex justify-content-between align-items-center py-1">' +
+                '<span><strong>' + item.name + '</strong> <small class="text-muted">' + verText + '</small></span>' +
+                '<button class="btn btn-xs btn-outline-danger btn-remove-from-queue" data-idx="' + i + '">' +
+                '<i class="fa fa-times"></i></button></li>'
+            );
+        }
+    }
+
+    $('#queue-list').on('click', '.btn-remove-from-queue', function () {
+        var idx = parseInt($(this).data('idx'));
+        queue.splice(idx, 1);
+        renderQueue();
+    });
+
+    $('#btn-clear-queue').on('click', function () {
+        queue = [];
+        renderQueue();
+    });
+
+    $('#tab-presets').on('click', '.btn-add-pkg', function () {
+        var name = $(this).data('name');
+        if (addToQueue(name)) {
+            msg(name + ' 已加入队列', true);
+        }
+    });
+
+    $('#tab-presets').on('click', '.btn-add-bundle', function () {
+        var key = $(this).data('bundle');
+        var bundle = PACKAGE_BUNDLES[key];
+        if (!bundle) return;
+        var added = 0, skipped = 0;
+        for (var i = 0; i < bundle.packages.length; i++) {
+            if (addToQueue(bundle.packages[i])) added++;
+            else skipped++;
+        }
+        msg(bundle.label + ' 已加入队列（新增 ' + added + '，重复跳过 ' + skipped + '）', added > 0);
+    });
+
+    $('#tab-presets').on('click', '.btn-add-category', function () {
+        var key = $(this).data('cat');
+        var cat = PACKAGE_CATEGORIES[key];
+        if (!cat) return;
+        var added = 0, skipped = 0;
+        for (var i = 0; i < cat.packages.length; i++) {
+            if (addToQueue(cat.packages[i].name)) added++;
+            else skipped++;
+        }
+        msg(cat.label + ' 已加入队列（新增 ' + added + '，重复跳过 ' + skipped + '）', added > 0);
+    });
+
+    $('#btn-search').on('click', doSearch);
+    $('#search-input').on('keydown', function (e) {
+        if (e.keyCode === 13) { e.preventDefault(); doSearch(); }
+    });
+
+    function doSearch() {
+        var kw = $('#search-input').val().trim();
+        if (!kw) { msg('请输入搜索关键词', false); return; }
+        var $box = $('#search-results');
+        $box.html('<div class="text-center text-muted py-4"><i class="fa fa-spinner fa-spin"></i> 搜索中...</div>');
+
+        $.get(API_SEARCH_PACKAGES, {distro_id: DISTRO_ID, keyword: kw}).done(function (res) {
+            if (!res || !res.success) {
+                $box.html('<div class="text-center text-danger py-3">' + ((res && res.message) || '搜索失败') + '</div>');
+                return;
+            }
+            var pkgs = res.packages || [];
+            if (pkgs.length === 0) {
+                $box.html('<div class="text-center text-muted py-3">未找到匹配的包</div>');
+                return;
+            }
+            $box.empty();
+            for (var i = 0; i < pkgs.length; i++) {
+                var name = pkgs[i].name;
+                $box.append(
+                    '<div class="list-group-item d-flex justify-content-between align-items-center">' +
+                    '<span><i class="fa fa-cube text-info mr-2"></i>' + name + '</span>' +
+                    '<button class="btn btn-xs btn-outline-primary btn-pick-pkg" data-name="' + name + '">' +
+                    '<i class="fa fa-plus"></i> 选择</button></div>'
+                );
+            }
+        }).fail(function () {
+            $box.html('<div class="text-center text-danger py-3">请求失败</div>');
+        });
+    }
+
+    $('#search-results').on('click', '.btn-pick-pkg', function () {
+        var name = $(this).data('name');
+        showVersionPicker(name);
+    });
+
+    function showVersionPicker(pkgName) {
+        if (inQueue(pkgName)) {
+            msg(pkgName + ' 已在队列中', false);
+            return;
+        }
+        var loadIdx = layui.layer.msg('正在查询可用版本...', {icon: 16, time: 0, shade: 0.3});
+        $.get(API_SEARCH_VERSIONS, {distro_id: DISTRO_ID, package: pkgName}).done(function (res) {
+            layui.layer.close(loadIdx);
+            var versions = [];
+            if (res && res.success && res.data) {
+                for (var i = 0; i < res.data.length; i++) {
+                    versions.push(res.data[i].full || res.data[i].major);
+                }
+            }
+            layui.use('layer', function () {
+                var html = '<div class="p-3">' +
+                    '<p class="mb-2">选择 <strong>' + pkgName + '</strong> 的安装版本：</p>' +
+                    '<select id="pkg-version-select" class="form-control mb-2">' +
+                    '<option value="latest">最新版本（推荐）</option>';
+                for (var j = 0; j < versions.length; j++) {
+                    html += '<option value="' + versions[j] + '">' + versions[j] + '</option>';
+                }
+                html += '</select></div>';
+
+                layui.layer.open({
+                    type: 1,
+                    title: '选择版本',
+                    content: html,
+                    area: ['360px', '220px'],
+                    btn: ['加入队列', '取消'],
+                    yes: function (idx) {
+                        var ver = $('#pkg-version-select').val();
+                        addToQueue(pkgName, ver === 'latest' ? '' : ver);
+                        layui.layer.close(idx);
+                    }
+                });
+            });
+        }).fail(function () {
+            layui.layer.close(loadIdx);
+            addToQueue(pkgName, '');
+        });
+    }
+
+    $('#btn-install').on('click', function () {
+        if (queue.length === 0) return;
+        layui.use('layer', function () {
+            layui.layer.confirm(
+                '确认安装 <b>' + queue.length + '</b> 个包到当前环境？<br>' +
+                '<code>' + queue.map(function (q) {
+                    return q.name + (q.version ? '=' + q.version : '（最新）');
+                }).join(', ') + '</code>',
+                {icon: 3, title: '安装确认', btn: ['开始安装', '取消']},
+                function (idx) {
+                    layui.layer.close(idx);
+                    var loadIdx = layui.layer.msg('正在创建任务...', {icon: 16, time: 0, shade: 0.3});
+                    $.ajax({
+                        url: API_INSTALL_PKG,
+                        type: 'POST',
+                        contentType: 'application/json',
+                        headers: {'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()},
+                        data: JSON.stringify({distro_id: DISTRO_ID, env_prefix: ENV_PREFIX, packages: queue})
+                    }).done(function (res) {
+                        layui.layer.close(loadIdx);
+                        if (!res || !res.success || !res.task_id) {
+                            msg((res && res.message) || '创建安装任务失败', false);
+                            return;
+                        }
+                        JieTaskLog.open({
+                            title: '安装包',
+                            taskId: res.task_id,
+                            width: '640px', height: '480px',
+                            onSuccess: function () {
+                                msg('安装完成，正在返回...', true);
+                                setTimeout(function () {
+                                    window.location.href = ENV_MANAGE_URL + (ENV_NAME ? '?env=' + encodeURIComponent(ENV_NAME) : '');
+                                }, 800);
+                            }
+                        });
+                    }).fail(function () {
+                        layui.layer.close(loadIdx);
+                        msg('请求失败', false);
+                    });
+                }
+            );
+        });
+    });
+
+    renderQueue();
+});
+</script>
+{% endblock %}

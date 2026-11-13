@@ -117,7 +117,6 @@
 {% block page_content %}
 <span style="display:none">{% csrf_token %}</span>
 
-{% if project_mgmt_enabled %}
 {# ── 项目概览 ── #}
 <div class="projects-overview">
   <div class="projects-overview-title">
@@ -137,7 +136,6 @@
     </div>
   </div>
 </div>
-{% endif %}
 
 {# ── 环境总览（异步加载，分类与行字段均由钩子数据驱动） ── #}
 <div id="env-sections">

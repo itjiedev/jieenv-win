@@ -1,4 +1,4 @@
-﻿meta = {
+meta = {
     'app_name': 'python_installer',
     'display_name': 'python-安装程序模式',
     'version': '1.17.0',

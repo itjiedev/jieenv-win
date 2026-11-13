@@ -41,6 +41,7 @@ runtime\python.exe jieenv\manage.py appinstall --path apps.python_main
 runtime\python.exe jieenv\manage.py appinstall --path apps.python_archive
 runtime\python.exe jieenv\manage.py appinstall --path apps.python_installer
 runtime\python.exe jieenv\manage.py appinstall --path apps.dbmysql
+runtime\python.exe jieenv\manage.py appinstall --path apps.conda
 runtime\python.exe jieenv\manage.py refreshcache
 if errorlevel 1 (
     echo.

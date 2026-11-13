@@ -146,10 +146,22 @@ def _decode_out(result: subprocess.CompletedProcess) -> str:
     return out.strip()
 
 
+def _run_cmd(cmd: list, cwd: Path = None) -> subprocess.CompletedProcess:
+    """统一 subprocess 包装：强制 PYTHONIOENCODING=utf-8 子进程环境变量，
+    防止 Django management command 的 self.stdout 用系统默认 GBK 输出时，
+    遇到 BOM 字符或其他非 GBK 可编码字符直接炸 UnicodeEncodeError。"""
+    child_env = os.environ.copy()
+    child_env['PYTHONIOENCODING'] = 'utf-8'
+    kwargs = {'capture_output': True, 'env': child_env}
+    if cwd is not None:
+        kwargs['cwd'] = str(cwd)
+    return subprocess.run(cmd, **kwargs)
+
+
 def _run_pip(requirements: Path) -> None:
     cmd = [str(_PYTHON), '-m', 'pip', 'install', '-r', str(requirements)]
     print(f'  [PIP] pip install -r {requirements.name}')
-    result = subprocess.run(cmd, capture_output=True)
+    result = _run_cmd(cmd)
     out_text = _decode_out(result)
     if result.returncode != 0:
         raise RuntimeError(f'pip install failed (exit={result.returncode}):\n{out_text}')
@@ -161,7 +173,7 @@ def _run_pip(requirements: Path) -> None:
 def _run_migrate() -> None:
     cmd = [str(_PYTHON), str(_MANAGE_PY), 'migrate', '--noinput']
     print(f'  [MIGRATE] python manage.py migrate --noinput')
-    result = subprocess.run(cmd, capture_output=True, cwd=str(_BASE_DIR))
+    result = _run_cmd(cmd, cwd=_BASE_DIR)
     out_text = _decode_out(result)
     if result.returncode != 0:
         raise RuntimeError(f'migrate failed (exit={result.returncode}):\n{out_text}')
@@ -172,7 +184,7 @@ def _run_migrate() -> None:
 def _run_apprescan() -> None:
     cmd = [str(_PYTHON), str(_MANAGE_PY), 'apprescan', '--all', '--no-deps', '--no-migrate']
     print(f'  [APPSCAN] python manage.py apprescan --all --no-deps --no-migrate')
-    result = subprocess.run(cmd, capture_output=True, cwd=str(_BASE_DIR))
+    result = _run_cmd(cmd, cwd=_BASE_DIR)
     out_text = _decode_out(result)
     if result.returncode != 0:
         raise RuntimeError(f'apprescan failed (exit={result.returncode}):\n{out_text}')
@@ -183,7 +195,7 @@ def _run_apprescan() -> None:
 def _run_refreshcache() -> None:
     cmd = [str(_PYTHON), str(_MANAGE_PY), 'refreshcache', '--sync']
     print(f'  [REFRESH] python manage.py refreshcache --sync')
-    result = subprocess.run(cmd, capture_output=True, cwd=str(_BASE_DIR))
+    result = _run_cmd(cmd, cwd=_BASE_DIR)
     out_text = _decode_out(result)
     if result.returncode != 0:
         raise RuntimeError(f'refreshcache failed (exit={result.returncode}):\n{out_text}')
@@ -194,12 +206,91 @@ def _run_refreshcache() -> None:
 def _run_checkdeps() -> None:
     cmd = [str(_PYTHON), str(_MANAGE_PY), 'checkdeps']
     print(f'  [DEPS] python manage.py checkdeps')
-    result = subprocess.run(cmd, capture_output=True, cwd=str(_BASE_DIR))
+    result = _run_cmd(cmd, cwd=_BASE_DIR)
     out_text = _decode_out(result)
     if result.returncode != 0:
         raise RuntimeError(f'checkdeps failed (exit={result.returncode}):\n{out_text}')
     for line in out_text.splitlines()[-8:]:
         print(f'            {line}')
+
+
+def _strip_bom(root_dir: Path) -> None:
+    """遍历 root_dir 下所有文本文件，自动去除 UTF-8 BOM 标记。
+
+    升级包 zip 内文件可能带 BOM（Windows 编辑器/PowerShell 默认行为），
+    解压后被 Django 读入数据库，后续 apprescan 输出到 GBK 控制台时触发
+    UnicodeEncodeError: 'gbk' codec can't encode character '\\ufeff'。
+
+    在此统一兜底清洗，比依赖打包者保证源文件干净更可靠。
+    """
+    exts = {'.py', '.txt', '.json', '.html', '.css', '.js', '.md', '.yml', '.yaml'}
+    skip_dirs = {'runtime', '__pycache__', '.git', 'node_modules', 'logs'}
+    cleaned = 0
+    for path in root_dir.rglob('*'):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in exts:
+            continue
+        if any(part in skip_dirs for part in path.parts):
+            continue
+        try:
+            with open(path, 'rb') as f:
+                head = f.read(3)
+            if head != b'\xef\xbb\xbf':
+                continue
+            with open(path, 'r', encoding='utf-8-sig') as f:
+                content = f.read()
+            with open(path, 'w', encoding='utf-8', newline='') as f:
+                f.write(content)
+            cleaned += 1
+        except (OSError, UnicodeDecodeError):
+            continue
+    if cleaned:
+        print(f'  [BOM] 清理 {cleaned} 个文件的 UTF-8 BOM 标记')
+
+
+def _strip_bom_in_db(base_dir: Path) -> None:
+    """直接操作 sqlite3 文件，清掉 AppRegistry 表里文本字段的 BOM 字符。
+
+    场景：磁盘 CHANGELOG.txt 带 BOM → Django 某个历史版本 read_text(encoding='utf-8')
+    把 \\ufeff 原样读入 → 存进 sqlite → 后续 apprescan 算 diff 时 old(带BOM) vs new(干净)
+    判定为变更 → 打印到 GBK 控制台炸 UnicodeEncodeError。
+
+    在磁盘文件已被 _strip_bom 清干净之后，把数据库里的历史脏数据也一并清掉，
+    这样 apprescan 的 diff 计算就不会再产生带 BOM 的值。
+    """
+    import sqlite3
+
+    db_path = base_dir / 'data' / 'jieenvmain.db'
+    if not db_path.exists():
+        print('  [DB] jieenvmain.db 不存在，跳过数据库 BOM 清理')
+        return
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='jiecore_appregistry'")
+        if not cur.fetchone():
+            print('  [DB] jiecore_appregistry 表不存在，跳过')
+            conn.close()
+            return
+        cur.execute("PRAGMA table_info(jiecore_appregistry)")
+        cols = [row[1] for row in cur.fetchall()]
+        text_cols = [c for c in cols if c not in ('id', 'created_at', 'updated_at', 'is_enabled', 'is_root')]
+        cleaned = 0
+        for col in text_cols:
+            cur.execute(
+                f"UPDATE jiecore_appregistry SET {col} = substr({col}, 2) WHERE {col} LIKE '\ufeff%'"
+            )
+            cleaned += cur.rowcount
+        conn.commit()
+        conn.close()
+        if cleaned:
+            print(f'  [DB] 清理 {cleaned} 条记录的 BOM 字段（涉及列: {", ".join(text_cols)}）')
+        else:
+            print(f'  [DB] AppRegistry 表无 BOM 脏数据（检查列: {", ".join(text_cols)}）')
+    except Exception as e:
+        print(f'  [DB] 清理失败（不阻断升级）: {e}')
 
 
 UNINSTALL_REG_KEY = r'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\JieEnv-win'
@@ -473,6 +564,10 @@ def main(zip_path_str: str, env_root_str: str = None) -> int:
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(pkg_path, dest_path)
             print(f'       Overwrite: {name}')
+
+        print('\n[4.5/11] BOM cleanup...')
+        _strip_bom(_SCRIPT_DIR)
+        _strip_bom_in_db(_BASE_DIR)
 
         print('\n[5/11] pip deps...')
         req_in_pkg = tmp_dir / 'requirements.txt'

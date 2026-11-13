@@ -1,4 +1,4 @@
-﻿from jiecore.app_manager import AppManager
+from jiecore.app_manager import AppManager
 
 def _has_child_apps():
     """检查是否有已启用应用依赖 python_main（含依赖声明即可）"""

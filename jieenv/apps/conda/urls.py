@@ -1,0 +1,53 @@
+from django.urls import path
+
+from . import views
+
+app_name = 'conda'
+
+urlpatterns = [
+    path('', views.IndexView.as_view(), name='index'),
+    path('distros/', views.DistroListView.as_view(), name='distro_list'),
+    path('envs/<str:distro_id>/', views.EnvManageView.as_view(), name='env_manage'),
+    path('config/<str:distro_id>/', views.DistroConfigView.as_view(), name='distro_config'),
+    path('install/', views.CondaInstallView.as_view(), name='install'),
+    path('uninstall/<str:distro_id>/', views.CondaUninstallView.as_view(), name='uninstall'),
+    path('pkg-install/<str:distro_id>/<str:env_name>/', views.PkgInstallView.as_view(), name='pkg_install'),
+
+    path('api/scan_registry/', views.api_scan_registry, name='api_scan_registry'),
+    path('api/import_registry/', views.api_import_registry, name='api_import_registry'),
+    path('api/installations/', views.api_installations, name='api_installations'),
+    path('api/envs/', views.api_envs, name='api_envs'),
+    path('api/packages/', views.api_packages, name='api_packages'),
+    path('api/search_versions/', views.api_search_versions, name='api_search_versions'),
+    path('api/create_env/', views.api_create_env, name='api_create_env'),
+    path('api/remove_env/', views.api_remove_env, name='api_remove_env'),
+    path('api/remove_installation/', views.api_remove_installation, name='api_remove_installation'),
+    path('api/uninstall_installation/', views.api_uninstall_installation, name='api_uninstall_installation'),
+    path('api/uninstall_confirm/', views.api_uninstall_confirm, name='api_uninstall_confirm'),
+    path('api/uninstall_precheck/', views.api_uninstall_precheck, name='api_uninstall_precheck'),
+    path('api/download_sources/', views.api_list_download_sources, name='api_download_sources'),
+    path('api/download_install/', views.api_download_install_conda, name='api_download_install'),
+    path('api/config/get/', views.api_config_get, name='api_config_get'),
+    path('api/config/save/', views.api_config_save, name='api_config_save'),
+    path('api/config/mirror/', views.api_config_mirror, name='api_config_mirror'),
+    path('api/config/backup/', views.api_config_backup, name='api_config_backup'),
+    path('api/config/backups_list/', views.api_config_backups_list, name='api_config_backups_list'),
+    path('api/config/restore/', views.api_config_restore, name='api_config_restore'),
+    path('api/config/reset/', views.api_config_reset, name='api_config_reset'),
+    path('api/config/clean_cache/', views.api_config_clean_cache, name='api_config_clean_cache'),
+    path('api/clean_download_cache/', views.api_clean_download_cache, name='api_clean_download_cache'),
+    path('api/config/delete_backup/', views.api_config_delete_backup, name='api_config_delete_backup'),
+    path('api/search_packages/', views.api_search_packages, name='api_search_packages'),
+    path('api/install_pkg/', views.api_install_pkg, name='api_install_pkg'),
+    path('api/remove_pkg/', views.api_remove_pkg, name='api_remove_pkg'),
+    path('api/upgrade_pkg/', views.api_upgrade_pkg, name='api_upgrade_pkg'),
+    path('api/check_conda_update/', views.api_check_conda_update, name='api_check_conda_update'),
+    path('api/upgrade_conda/', views.api_upgrade_conda, name='api_upgrade_conda'),
+    path('api/check_updates/', views.api_check_updates, name='api_check_updates'),
+    path('api/clone_env/', views.api_clone_env, name='api_clone_env'),
+    path('api/rename_env/', views.api_rename_env, name='api_rename_env'),
+    path('api/export_env_yml/', views.api_export_env_yml, name='api_export_env_yml'),
+    path('api/download_yml/<str:filename>/', views.api_download_yml, name='api_download_yml'),
+    path('api/import_env_yml/', views.api_import_env_yml, name='api_import_env_yml'),
+    path('api/upload_yml/', views.api_upload_yml, name='api_upload_yml'),
+]

@@ -1,0 +1,482 @@
+﻿{% extends "layout_main.html" %}
+
+{% block page_content %}
+<div class="card shadow-sm">
+    <div class="card-header">
+        <div class="card-title">
+            <h5 class="mb-0">
+                <span>配置 {{ installation.display_name }}</span>
+            </h5>
+            <small class="text-muted">
+                <i class="bi bi-geo-alt"></i> {{ installation.install_dir }}
+                · <code>{{ condarc_path }}</code>
+            </small>
+        </div>
+        <div class="card-tools">
+            <button type="button" id="btn-clean-cache" class="btn btn-sm btn-outline-warning">
+                <i class="bi bi-broom"></i> 清理索引缓存
+            </button>
+            <button type="button" id="btn-backup" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-archive"></i> 备份
+            </button>
+            <button type="button" id="btn-reset" class="btn btn-sm btn-outline-danger">
+                <i class="bi bi-arrow-counterclockwise"></i> 重置
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="form-group">
+                    <label>镜像加速源</label>
+                    <select id="select-mirror" class="form-control">
+                        <option value="">加载中...</option>
+                    </select>
+                    <small class="text-muted">选择下载加速的镜像站</small>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label>频道组合</label>
+                <select id="select-channel" class="form-control">
+                    <option value="">加载中...</option>
+                </select>
+                <small class="text-muted">决定从哪些频道拉包（影响商业许可）</small>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="flex-shrink-0">
+                <button type="button" id="btn-apply" class="btn btn-primary" disabled>
+                    <i class="bi bi-check-lg"></i> 应用配置
+                </button>
+                <button type="button" id="btn-cancel" class="btn btn-outline-secondary ms-1" disabled>
+                    <i class="bi bi-x-lg"></i> 取消
+                </button>
+            </div>
+        </div>
+
+<div id="compliance-alert" class="alert d-none flex-grow-1 py-2 px-3 small"></div>
+
+        <div class="mb-2">
+            <label class="form-label fw-bold">.condarc 预览</label>
+            <small class="text-muted">选择后实时预览，点击"应用配置"才会真正写入</small>
+        </div>
+        <div class="border rounded" style="background: #2d2d2d; color: #f8f8f2;">
+            <div class="d-flex justify-content-between align-items-center px-3 py-1 border-bottom"
+                 style="background: #3d3d3d; border-color: #555;">
+                <span class="font-monospace" style="font-size: 12px; color: #aaa;">
+                    <i class="bi bi-eye"></i> preview · 只读
+                </span>
+                <span id="preview-hint" class="font-monospace" style="font-size: 12px; color: #6ee7b7;">当前已保存</span>
+            </div>
+            <textarea id="yaml-preview" class="form-control font-monospace" rows="12" readonly
+                      style="font-size: 13px; tab-size: 2; background: transparent; color: inherit; border: none; resize: none;"></textarea>
+        </div>
+
+        <div class="mt-3">
+            <a href="javascript:void(0)" id="toggle-advanced" class="text-decoration-none">
+                <i class="bi bi-chevron-down" id="icon-advanced"></i> 高级：直接编辑原始 YAML
+            </a>
+            <div id="advanced-yaml" class="d-none mt-2">
+                <div class="alert alert-warning py-2 mb-2">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <b>频道混装风险</b>：R 语言环境建议不要同时开启 <code>defaults</code> 和 <code>conda-forge</code> 两个频道——它们构建的 R 语言二进制包 ABI 不兼容，混装会导致运行时崩溃。如果想使用高版本R，建议使用 <b>conda-forge</b>。
+                </div>
+                <textarea id="yaml-editor" class="form-control font-monospace" rows="12"
+                          style="font-size: 13px; tab-size: 2;"
+                          placeholder="直接编辑 .condarc，保存时会做 YAML 语法校验"></textarea>
+                <div class="mt-2">
+                    <button type="button" id="btn-save-yaml" class="btn btn-sm btn-primary">
+                        <i class="bi bi-save"></i> 保存原始 YAML
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm mt-3">
+    <div class="card-header">
+        <h6 class="mb-0"><i class="bi bi-clock-history"></i> 备份历史</h6>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0" id="backups-table">
+            <thead class="table-light">
+                <tr>
+                    <th>备份文件</th>
+                    <th>时间</th>
+                    <th>大小</th>
+                    <th style="width: 120px;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="backups-tbody">
+                <tr><td colspan="4" class="text-center text-muted py-3">暂无备份</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<input type="hidden" id="distro-id" value="{{ distro_id }}">
+{% endblock %}
+
+{% block js_code %}
+<script>
+var API_CONFIG_GET = "{% url 'conda:api_config_get' %}";
+var API_CONFIG_SAVE = "{% url 'conda:api_config_save' %}";
+var API_CONFIG_MIRROR = "{% url 'conda:api_config_mirror' %}";
+var API_CONFIG_BACKUP = "{% url 'conda:api_config_backup' %}";
+var API_CONFIG_BACKUPS = "{% url 'conda:api_config_backups_list' %}";
+var API_CONFIG_RESTORE = "{% url 'conda:api_config_restore' %}";
+var API_CONFIG_RESET = "{% url 'conda:api_config_reset' %}";
+var API_CONFIG_CLEAN_CACHE = "{% url 'conda:api_config_clean_cache' %}";
+var API_CONFIG_DELETE_BACKUP = "{% url 'conda:api_config_delete_backup' %}";
+var DISTRO_ID = "{{ distro_id }}";
+
+var _mirrorList = [];
+var _channelList = [];
+var _origMirrorId = '';
+var _origChannelId = '';
+var _currentCfg = null;
+
+function inferMirrorId(cfg) {
+    if (!cfg) return '';
+    var dc = cfg.default_channels || [];
+    var cc = cfg.custom_channels || {};
+    var allUrls = dc.concat(Object.values(cc));
+    if (!allUrls.length) return 'official';
+    for (var i = 0; i < _mirrorList.length; i++) {
+        var m = _mirrorList[i];
+        if (m.id === 'official') continue;
+        var mUrls = (m.default_channels || []).concat(Object.values(m.custom_channels || {}));
+        if (!mUrls.length) continue;
+        for (var j = 0; j < mUrls.length; j++) {
+            for (var k = 0; k < allUrls.length; k++) {
+                if (allUrls[k].indexOf(mUrls[j].split('/')[2]) !== -1) return m.id;
+            }
+        }
+    }
+    return '';
+}
+
+function inferChannelId(cfg) {
+    if (!cfg) return '';
+    var channels = cfg.channels || [];
+    if (!channels.length) return 'defaults';
+    var key = channels.slice().sort().join('|');
+    for (var i = 0; i < _channelList.length; i++) {
+        var ch = _channelList[i];
+        var ck = (ch.channels || []).slice().sort().join('|');
+        if (ck && ck === key) return ch.id;
+    }
+    return '';
+}
+
+function findById(list, id) {
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return {};
+}
+
+function buildPreviewCfg(mirrorId, channelId) {
+    var cfg = {};
+    var mp = findById(_mirrorList, mirrorId);
+    var cp = findById(_channelList, channelId);
+    if (cp.channels) cfg.channels = cp.channels.slice();
+    if (cp.channel_priority) cfg.channel_priority = cp.channel_priority;
+    var hasDefaults = cp.channels && cp.channels.indexOf('defaults') !== -1;
+    if (hasDefaults && mp.default_channels) cfg.default_channels = mp.default_channels.slice();
+    if (mp.custom_channels) cfg.custom_channels = $.extend({}, mp.custom_channels);
+    return cfg;
+}
+
+function cfgToYaml(cfg) {
+    if (!cfg || !Object.keys(cfg).length) return '(空)';
+    var lines = [];
+    if (cfg.channels && cfg.channels.length) {
+        lines.push('channels:');
+        cfg.channels.forEach(function(c) { lines.push('  - ' + c); });
+    }
+    if (cfg.channel_priority) {
+        lines.push('channel_priority: ' + cfg.channel_priority);
+    }
+    if (cfg.default_channels && cfg.default_channels.length) {
+        lines.push('default_channels:');
+        cfg.default_channels.forEach(function(c) { lines.push('  - ' + c); });
+    }
+    if (cfg.custom_channels && Object.keys(cfg.custom_channels).length) {
+        lines.push('custom_channels:');
+        for (var k in cfg.custom_channels) {
+            lines.push('  ' + k + ': ' + cfg.custom_channels[k]);
+        }
+    }
+    return lines.join('\n');
+}
+
+function detectComplianceLocal(cfg) {
+    var channels = cfg.channels || [];
+    var defaultChannels = cfg.default_channels || [];
+    var customChannels = cfg.custom_channels || {};
+    var all = channels.concat(defaultChannels).concat(Object.keys(customChannels));
+    var commercial = false;
+    var commercialChannels = [];
+    for (var i = 0; i < all.length; i++) {
+        var ch = String(all[i]).toLowerCase().trim();
+        var isComm = false;
+        if (ch === 'defaults') isComm = true;
+        else if (ch.indexOf('repo.anaconda.com') !== -1) isComm = true;
+        else if (ch.indexOf('/anaconda/pkgs/') !== -1 || ch.indexOf('anaconda.com/pkgs/') !== -1) isComm = true;
+        if (isComm) {
+            commercial = true;
+            commercialChannels.push(all[i]);
+        }
+    }
+    return {
+        commercial_use: commercial,
+        commercial_channels: commercialChannels,
+        message: commercial
+            ? '⚠️ 当前包含 Anaconda 官方频道或其镜像，可能需要需购买商业许可。'
+            : '✅ 当前使用免费频道。',
+    };
+}
+
+function renderCompliance(c) {
+    var alert = $('#compliance-alert');
+    alert.removeClass('d-none alert-warning alert-success').addClass(
+        c.commercial_use ? 'alert-warning' : 'alert-success'
+    ).html(
+        '<i class="bi ' + (c.commercial_use ? 'bi-exclamation-triangle' : 'bi-check-circle') + '"></i> ' +
+        c.message
+    );
+}
+
+function updatePreview() {
+    var mid = $('#select-mirror').val();
+    var cid = $('#select-channel').val();
+    if (!mid || !cid) return;
+    var previewCfg = buildPreviewCfg(mid, cid);
+    $('#yaml-preview').val(cfgToYaml(previewCfg));
+    renderCompliance(detectComplianceLocal(previewCfg));
+    var changed = (mid !== _origMirrorId) || (cid !== _origChannelId);
+    $('#btn-apply').prop('disabled', !changed);
+    $('#btn-cancel').prop('disabled', !changed);
+    var hint = $('#preview-hint');
+    if (changed) {
+        hint.text('⚠ 有未保存改动').css('color', '#fbbf24');
+    } else {
+        hint.text('当前已保存').css('color', '#6ee7b7');
+    }
+}
+
+function renderBackups(list) {
+    var tbody = $('#backups-tbody');
+    if (!list.length) {
+        tbody.html('<tr><td colspan="4" class="text-center text-muted py-3">暂无备份</td></tr>');
+        return;
+    }
+    tbody.empty();
+    list.forEach(function(b) {
+        var sizeKb = (b.size / 1024).toFixed(1);
+        tbody.append(
+            '<tr>' +
+            '<td><code>' + b.name + '</code></td>' +
+            '<td>' + b.mtime + '</td>' +
+            '<td>' + sizeKb + ' KB</td>' +
+            '<td class="d-flex gap-1">' +
+            '<button class="btn btn-xs btn-outline-primary btn-restore" data-path="' + b.path + '">恢复</button>' +
+            '<button class="btn btn-xs btn-outline-danger btn-delete-backup ml-1" data-path="' + b.path + '">删除</button>' +
+            '</td>' +
+            '</tr>'
+        );
+    });
+}
+
+function loadConfig() {
+    $.get(API_CONFIG_GET + '?distro_id=' + encodeURIComponent(DISTRO_ID), function(resp) {
+        if (!resp.success) {
+            layer.msg(resp.message || '加载失败', {icon: 2});
+            return;
+        }
+        _mirrorList = resp.mirrors || [];
+        _channelList = resp.channels || [];
+        _currentCfg = resp.config || {};
+
+        var mirrorSel = $('#select-mirror');
+        mirrorSel.empty();
+        _mirrorList.forEach(function(m) {
+            mirrorSel.append($('<option>', { value: m.id, text: m.label }));
+        });
+
+        var channelSel = $('#select-channel');
+        channelSel.empty();
+        _channelList.forEach(function(c) {
+            channelSel.append($('<option>', { value: c.id, text: c.label }));
+        });
+
+        _origMirrorId = inferMirrorId(_currentCfg);
+        _origChannelId = inferChannelId(_currentCfg);
+        $('#select-mirror').val(_origMirrorId || 'official');
+        $('#select-channel').val(_origChannelId || 'defaults');
+
+        $('#yaml-editor').val(resp.raw_yaml || '');
+        renderBackups(resp.backups || []);
+        updatePreview();
+    }).fail(function() { layer.msg('网络错误', {icon: 2}); });
+}
+
+$(function() {
+    loadConfig();
+
+    $('#toggle-advanced').on('click', function() {
+        var box = $('#advanced-yaml');
+        var icon = $('#icon-advanced');
+        if (box.hasClass('d-none')) {
+            box.removeClass('d-none');
+            icon.removeClass('bi-chevron-down').addClass('bi-chevron-up');
+        } else {
+            box.addClass('d-none');
+            icon.removeClass('bi-chevron-up').addClass('bi-chevron-down');
+        }
+    });
+
+    $('#select-mirror, #select-channel').on('change', updatePreview);
+
+    $('#btn-apply').on('click', function() {
+        var mid = $('#select-mirror').val();
+        var cid = $('#select-channel').val();
+        if (!mid || !cid) {
+            layer.msg('请选择镜像源和频道组合', {icon: 2});
+            return;
+        }
+        $.ajax({
+            url: API_CONFIG_MIRROR,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({distro_id: DISTRO_ID, mirror_id: mid, channel_id: cid}),
+            success: function(resp) {
+                if (resp.success) {
+                    layer.msg('✅ 已应用', {icon: 1});
+                    loadConfig();
+                } else {
+                    layer.msg('❌ ' + resp.message, {icon: 2});
+                }
+            },
+            error: function() { layer.msg('网络错误', {icon: 2}); }
+        });
+    });
+
+    $('#btn-cancel').on('click', function() {
+        $('#select-mirror').val(_origMirrorId || 'official');
+        $('#select-channel').val(_origChannelId || 'defaults');
+        updatePreview();
+    });
+
+    $('#btn-clean-cache').on('click', function() {
+        $.ajax({
+            url: API_CONFIG_CLEAN_CACHE,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({distro_id: DISTRO_ID}),
+            success: function(resp) {
+                layer.msg(resp.message || ('已清理 ' + (resp.removed || 0) + ' 个缓存'),
+                    {icon: resp.success ? 1 : 2});
+            },
+            error: function() { layer.msg('网络错误', {icon: 2}); }
+        });
+    });
+
+    $('#btn-save-yaml').on('click', function() {
+        var raw = $('#yaml-editor').val();
+        $.ajax({
+            url: API_CONFIG_SAVE,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({distro_id: DISTRO_ID, raw_yaml: raw}),
+            success: function(resp) {
+                if (resp.success) {
+                    layer.msg('✅ ' + resp.message, {icon: 1});
+                    loadConfig();
+                } else {
+                    layer.msg('❌ ' + resp.message, {icon: 2, time: 5000});
+                }
+            },
+            error: function() { layer.msg('网络错误', {icon: 2}); }
+        });
+    });
+
+    $('#btn-backup').on('click', function() {
+        $.ajax({
+            url: API_CONFIG_BACKUP,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({distro_id: DISTRO_ID}),
+            success: function(resp) {
+                layer.msg(resp.success ? '✅ ' + resp.message : '❌ ' + resp.message,
+                    {icon: resp.success ? 1 : 2});
+                if (resp.success) loadConfig();
+            },
+            error: function() { layer.msg('网络错误', {icon: 2}); }
+        });
+    });
+
+    $('#btn-reset').on('click', function() {
+        layer.confirm('重置后 .condarc 将被清空，重置前会自动备份一份。确定要重置吗？', {icon: 3, title: '确认重置'},
+            function(idx) {
+                $.ajax({
+                    url: API_CONFIG_RESET,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({distro_id: DISTRO_ID}),
+                    success: function(resp) {
+                        layer.close(idx);
+                        layer.msg(resp.success ? '✅ ' + resp.message : '❌ ' + resp.message,
+                            {icon: resp.success ? 1 : 2});
+                        if (resp.success) loadConfig();
+                    },
+                    error: function() { layer.msg('网络错误', {icon: 2}); }
+                });
+            }
+        );
+    });
+
+    $(document).on('click', '.btn-restore', function() {
+        var path = $(this).data('path');
+        layer.confirm('恢复后将覆盖当前 .condarc，当前版本不会自动备份。确定要恢复吗？', {icon: 3, title: '确认恢复'},
+            function(idx) {
+                $.ajax({
+                    url: API_CONFIG_RESTORE,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({distro_id: DISTRO_ID, backup_path: path}),
+                    success: function(resp) {
+                        layer.close(idx);
+                        layer.msg(resp.success ? '✅ ' + resp.message : '❌ ' + resp.message,
+                            {icon: resp.success ? 1 : 2});
+                        if (resp.success) loadConfig();
+                    },
+                    error: function() { layer.msg('网络错误', {icon: 2}); }
+                });
+            }
+        );
+    });
+
+    $(document).on('click', '.btn-delete-backup', function() {
+        var path = $(this).data('path');
+        layer.confirm('确定要删除这个备份文件吗？此操作不可撤销。', {icon: 3, title: '确认删除'},
+            function(idx) {
+                $.ajax({
+                    url: API_CONFIG_DELETE_BACKUP,
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({distro_id: DISTRO_ID, backup_path: path}),
+                    success: function(resp) {
+                        layer.close(idx);
+                        layer.msg(resp.success ? '✅ ' + resp.message : '❌ ' + resp.message,
+                            {icon: resp.success ? 1 : 2});
+                        if (resp.success) loadConfig();
+                    },
+                    error: function() { layer.msg('网络错误', {icon: 2}); }
+                });
+            }
+        );
+    });
+});
+</script>
+{% endblock %}

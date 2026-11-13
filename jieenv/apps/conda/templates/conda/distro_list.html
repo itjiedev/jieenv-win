@@ -1,0 +1,335 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+{# ── 顶部操作栏 ── #}
+<div class="card-header p-0 mb-2 border-0">
+    <div class="card-title">
+        {% if installations|length == 0 %}
+        <button type="button" id="btn-scan" class="btn btn-success btn-sm">
+            <i class="fa fa-search"></i> 探测已安装
+        </button>
+        <button type="button" id="btn-download-install" class="btn btn-outline-success btn-sm">
+            <i class="fa fa-download"></i> 下载安装
+        </button>
+        {% elif installations|length == 1 %}
+        <a href="{% url 'conda:env_manage' installations.0.id %}" class="btn btn-primary btn-sm">
+            <i class="fa fa-cogs"></i> 进入环境管理
+        </a>
+        {% else %}
+        <button type="button" id="btn-scan" class="btn btn-success btn-sm">
+            <i class="fa fa-search"></i> 探测已安装
+        </button>
+        {% endif %}
+        <button type="button" id="btn-clean-cache" class="btn btn-outline-secondary btn-sm ml-2" title="清理下载缓存">
+            <i class="fa fa-broom"></i> 清理下载缓存
+        </button>
+    </div>
+</div>
+
+{% if installations|length == 0 %}
+
+    {# ── 0 个：空状态 ── #}
+    <div class="text-center text-muted py-5">
+        <i class="fa fa-database fa-3x mb-3"></i>
+        <p class="mb-1">暂无已登记的 Conda 发行版</p>
+        <p class="mb-0">点击 <b>"探测已安装"</b> 扫描注册表，或 <b>"下载安装"</b> 安装新版本</p>
+    </div>
+
+{% elif installations|length == 1 %}
+
+    {# ── 1 个：简化视图 ── #}
+    {% with item=installations.0 %}
+    <div class="card shadow-sm">
+        <div class="card-header bg-transparent border-0 pt-3 pb-0">
+            <div class="d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">
+                    <i class="fa fa-cube text-primary mr-2"></i>
+                    当前 Conda 发行版
+                </h5>
+                {% if item.registry_hive %}
+                <span class="badge badge-info">已登记</span>
+                {% else %}
+                <span class="badge badge-secondary">已登记</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body pt-3">
+            <div class="row">
+                <div class="col-md-6">
+                    <small class="text-muted">名称</small>
+                    <div class="mb-2">{{ item.display_name|default:"-" }}</div>
+                    <small class="text-muted">实际版本</small>
+                    <div class="mb-2">
+                        <span class="badge badge-light text-dark border">{{ item.version|default:"-" }}</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <small class="text-muted">安装目录</small>
+                    <div class="mb-2" title="{{ item.install_dir|default:item.install_location|default:'' }}">
+                        <code class="text-truncate d-block" style="max-width:100%">{{ item.install_dir|default:"-" }}</code>
+                    </div>
+                    {% if item.publisher %}
+                    <small class="text-muted">发行商</small>
+                    <div>{{ item.publisher }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-transparent border-0 pt-0 pb-3">
+            <div class="btn-group btn-group-sm">
+                <a href="{% url 'conda:env_manage' item.id %}" class="btn btn-primary">
+                    <i class="fa fa-cogs"></i> 环境管理
+                </a>
+                <a href="{% url 'conda:distro_config' item.id %}" class="btn btn-outline-secondary">
+                    <i class="fa fa-sliders"></i> 配置
+                </a>
+                <button type="button" class="btn btn-outline-info btn-upgrade-conda"
+                        data-id="{{ item.id }}" data-name="{{ item.display_name|default:item.install_dir }}"
+                        data-check-id="{{ item.id }}" style="display:none;">
+                    <i class="fa fa-arrow-up"></i> 升级
+                </button>
+                <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                </button>
+                <div class="dropdown-menu dropdown-menu-right">
+                    <a class="dropdown-item text-danger" href="{% url 'conda:uninstall' item.id %}">
+                        <i class="fa fa-trash"></i> 卸载发行版
+                    </a>
+                    <button type="button" class="dropdown-item text-muted btn-remove"
+                            data-id="{{ item.id }}" data-name="{{ item.display_name|default:item.install_dir }}">
+                        <i class="fa fa-unlink"></i> 移除登记
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endwith %}
+
+{% else %}
+
+    {# ── >1 个：完整列表 + 多发行版警告 ── #}
+    <div class="alert alert-danger">
+        <h5><i class="fa fa-exclamation-triangle"></i> 检测到多个 Conda 发行版</h5>
+        <p class="mb-1">jieEnv 遵循 conda 原生管理方式，由于各版本配置是互通的，多发行版共存可能导致管理混乱。</p>
+        <p class="mb-0"><b>建议只保留一个发行版</b>，卸载不需要的版本。</p>
+    </div>
+
+    <div class="row" id="distro-cards">
+    {% for item in installations %}
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-header bg-transparent border-0 pt-3 pb-0">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0">
+                            <i class="fa fa-cube text-primary mr-2"></i>
+                            <a href="{% url 'conda:env_manage' item.id %}" class="text-body font-weight-bold">{{ item.display_name|default:"未知" }}</a>
+                        </h5>
+                        {% if item.registry_hive %}
+                        <span class="badge badge-info">扫描</span>
+                        {% else %}
+                        <span class="badge badge-secondary">导入</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body pt-2">
+                    <div class="mb-2">
+                        <small class="text-muted">实际版本</small>
+                        <div>
+                            <span class="badge badge-light text-dark border">{{ item.version|default:"-" }}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <small class="text-muted">安装目录</small>
+                        <div title="{{ item.install_dir|default:item.install_location|default:'' }}">
+                            <code class="text-truncate d-block" style="max-width:100%">{{ item.install_dir|default:"-" }}</code>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-transparent border-0 pt-0 pb-3">
+                    <div class="btn-group btn-group-sm w-100">
+                        <a href="{% url 'conda:env_manage' item.id %}" class="btn btn-primary">
+                            <i class="fa fa-cogs"></i> 环境管理
+                        </a>
+                        <a href="{% url 'conda:distro_config' item.id %}" class="btn btn-outline-secondary">
+                            <i class="fa fa-sliders"></i> 配置
+                        </a>
+                        <button type="button" class="btn btn-outline-info btn-upgrade-conda"
+                                data-id="{{ item.id }}" data-name="{{ item.display_name|default:item.install_dir }}"
+                                data-check-id="{{ item.id }}" style="display:none;">
+                            <i class="fa fa-arrow-up"></i> 升级
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-right">
+                            <a class="dropdown-item text-danger" href="{% url 'conda:uninstall' item.id %}">
+                                <i class="fa fa-trash"></i> 卸载发行版
+                            </a>
+                            <button type="button" class="dropdown-item text-muted btn-remove"
+                                    data-id="{{ item.id }}" data-name="{{ item.display_name|default:item.install_dir }}">
+                                <i class="fa fa-unlink"></i> 移除登记
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    </div>
+
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+<script>
+$(function () {
+    var API_IMPORT_REGISTRY = '{% url "conda:api_import_registry" %}';
+    var API_REMOVE = '{% url "conda:api_remove_installation" %}';
+    var API_INSTALLATIONS = '{% url "conda:api_installations" %}';
+    var API_UPGRADE_CONDA = '{% url "conda:api_upgrade_conda" %}';
+    var API_CHECK_UPDATE = '{% url "conda:api_check_conda_update" %}';
+    var URL_INSTALL = '{% url "conda:install" %}';
+
+    // ── 异步探测每个发行版是否有可升级的 conda ────────
+    function checkAllUpdates() {
+        var checks = $('[data-check-id]');
+        if (!checks.length) return;
+        checks.each(function () {
+            var btn = $(this);
+            var id = btn.data('check-id');
+            $.get(API_CHECK_UPDATE, {id: id}).done(function (res) {
+                if (res && res.success && res.has_update) {
+                    btn.html('<i class="fa fa-arrow-up"></i> ' + (res.latest ? res.current + ' → ' + res.latest : '有新版本'));
+                    btn.show();
+                }
+            });
+        });
+    }
+    checkAllUpdates();
+
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3000});
+        });
+    }
+
+    // ── 探测已安装（后端一步完成扫描+登记）────────────────
+    $('#btn-scan').on('click', function () {
+        var loadIdx = layui.layer.msg('正在扫描注册表并登记...', {icon: 16, shade: [0.3, '#000'], time: 0});
+        $.post(API_IMPORT_REGISTRY).done(function (res) {
+            layui.layer.close(loadIdx);
+            msg(res.message || '扫描完成', res.success);
+            if (res.success) setTimeout(function () { window.location.reload(); }, 800);
+        }).fail(function () {
+            layui.layer.close(loadIdx);
+            msg('请求失败', false);
+        });
+    });
+
+    // ── 下载安装（有已登记发行版时弹警告）───────────────
+    $('#btn-download-install').on('click', function () {
+        var layer = layui.layer;
+        $.get(API_INSTALLATIONS).done(function (ir) {
+            var existingCount = (ir && ir.success && ir.data) ? ir.data.length : 0;
+            if (existingCount > 0) {
+                layer.confirm(
+                    '<div style="color:#d9534f;margin-bottom:10px;">' +
+                    '<i class="fa fa-exclamation-triangle"></i> 已登记 <b>' + existingCount + '</b> 个发行版<br>' +
+                    '由于 Conda 所有发行版共享同一配置目录，<b>多版本共存可能导致混乱</b>。' +
+                    '</div>' +
+                    '仍然前往安装页面？',
+                    {icon: 3, title: '多发行版提示', btn: ['前往安装', '取消']},
+                    function (idx) {
+                        layer.close(idx);
+                        window.location.href = URL_INSTALL;
+                    }
+                );
+            } else {
+                window.location.href = URL_INSTALL;
+            }
+        }).fail(function () {
+            window.location.href = URL_INSTALL;
+        });
+    });
+
+    // ── 移除登记 ──────────────────────────────────────────
+    $(document).on('click', '.btn-remove', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm('确定移除登记 "' + name + '" 吗？\n（只删除记录，不会卸载实际文件）',
+                {icon: 3, title: '移除登记'}, function (idx) {
+                layer.close(idx);
+                $.post(API_REMOVE, {id: id}).done(function (res) {
+                    msg(res.message, res.success);
+                    if (res.success) setTimeout(function () { window.location.reload(); }, 600);
+                });
+            });
+        });
+    });
+
+    // ── 升级 Conda ─────────────────────────────────────────
+    $(document).on('click', '.btn-upgrade-conda', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm(
+                '升级 <b>Conda</b> 到最新版本？<br>' +
+                '<span class="text-muted small">当前发行版: ' + name + '</span><br><br>' +
+                '升级过程中 Conda 可能短暂不可用，建议关闭其他使用 Conda 的程序。',
+                {icon: 3, title: '升级 Conda', btn: ['开始升级', '取消']},
+                function (idx) {
+                    layer.close(idx);
+                    var loadIdx = layer.msg('正在创建任务...', {icon: 16, time: 0, shade: 0.3});
+                    $.post(API_UPGRADE_CONDA, {id: id}).done(function (res) {
+                        layer.close(loadIdx);
+                        if (res && res.success && res.task_id) {
+                            JieTaskLog.open({
+                                title: '升级 Conda - ' + name,
+                                taskId: res.task_id,
+                                width: '640px', height: '480px',
+                                onSuccess: function () {
+                                    setTimeout(function () { window.location.reload(); }, 1000);
+                                }
+                            });
+                        } else {
+                            msg((res && res.message) || '创建任务失败', false);
+                        }
+                    }).fail(function () {
+                        layer.close(loadIdx);
+                        msg('请求失败', false);
+                    });
+                }
+            );
+        });
+    });
+
+    // ── 清理下载缓存 ──────────────────────────────
+    var API_CLEAN_DOWNLOAD_CACHE = "{% url 'conda:api_clean_download_cache' %}";
+    $('#btn-clean-cache').on('click', function () {
+        layer.confirm(
+            '确定要清理 conda 安装包下载缓存吗？<br>清理后下次安装需要重新下载。',
+            { icon: 3, title: '清理下载缓存' },
+            function (idx) {
+                layer.close(idx);
+                var loadIdx = layer.msg('正在清理...', {icon: 16, time: 0, shade: 0.2});
+                $.post(API_CLEAN_DOWNLOAD_CACHE).done(function (res) {
+                    layer.close(loadIdx);
+                    if (res && res.success) {
+                        layer.msg(res.message, {icon: 1});
+                    } else {
+                        layer.msg((res && res.message) || '清理失败', {icon: 2});
+                    }
+                }).fail(function () {
+                    layer.close(loadIdx);
+                    layer.msg('请求失败', {icon: 2});
+                });
+            }
+        );
+    });
+
+});
+</script>
+{% endblock %}

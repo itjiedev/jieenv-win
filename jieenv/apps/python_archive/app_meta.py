@@ -1,4 +1,4 @@
-﻿meta = {
+meta = {
     # 基础信息
     'app_name': 'python_archive',
     'display_name': 'python-独立版本模式',

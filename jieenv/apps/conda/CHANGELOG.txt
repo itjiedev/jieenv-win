@@ -1,0 +1,86 @@
+﻿v1.2.7
+- IndexView 统一跳转到发行版管理：之前根据 storage 旧数据智能跳转可能带坏 distro_id（用户在 jieEnv 外卸载后）；现在一律 redirect 到 distro_list，强制过 scan_registry + sync_with_detected，确保数据永远实时
+----------------------------------------------------------------------
+v1.2.6
+- 清理下载缓存按钮：发行版列表页顶部加"清理下载缓存"按钮，一键 shutil.rmtree(conda_download) + 立即重建空目录，下次安装自动重新下载；返回释放的 MB 数；layui confirm 防误点
+- 发行版探测同步清理：storage 新增 sync_with_detected() — 同路径 upsert 保持 md5 固定 ID、检测不到的旧记录自动移除（用户在 jieEnv 外卸载后列表自动干净）；DistroListView 自动扫描和 api_import_registry 两个入口统一走 sync_with_detected
+----------------------------------------------------------------------
+v1.2.5
+- 环境列表 + 包列表添加搜索功能：左侧环境列表头部加搜索框，右侧包列表 env-prefix-bar 加搜索框；纯前端 DOM 过滤，不区分大小写，刷新/切换环境后自动保持当前搜索词
+----------------------------------------------------------------------
+v1.2.4
+- 首页环境总览注册：向 mainapp.home.environments 扩展点注册 Conda 摘要行，展示发行版数量、环境总数和发行版名称；优先读缓存避免首页卡顿；sort=25 排在两个 Python 应用之后
+----------------------------------------------------------------------
+v1.2.3
+- 删除环境命令纠错：conda env remove 本身就是专用子命令，不需要 --all 参数（之前错误加了 --all，那是 conda remove --all 才用的）；恢复为 conda env remove -p xxx -y
+----------------------------------------------------------------------
+v1.2.2
+- 环境列表刷新恢复选中：刷新后优先恢复 currentEnvName（用户当前选中），没有再 fallback 到 initialEnvName；修复改代码时 if 嵌套缺大括号导致的 SyntaxError
+----------------------------------------------------------------------
+v1.2.1
+- 删除环境命令加 --all：conda env remove -p xxx -y --all，同时清理该环境独有的包缓存（共享包智能跳过）
+- 预置包长名排版修复：pkg_install.html flex 容器加 min-width:0，文本区 flex:1 + min-width:0，按钮 flex-shrink:0，inline style 替代 Bootstrap 工具类避免被覆盖
+- 环境操作按钮图标化：env_manage.html 底部操作栏 4 按钮（导出/重命名/克隆/导入）改为纯图标 btn-sm + flex-nowrap 强制不换行 + 导出↑/导入↓ 图标互换
+- 环境列表刷新按钮修复：之前刷新仍走 JSON 缓存导致"没效果"，改为传 refresh=1 强制实时 conda env list 探测；点刷新时弹 loading（转圈+遮罩），完成后弹"已刷新"提示
+----------------------------------------------------------------------
+v1.2.0
+- P2 环境管理补全（完整闭环）：克隆环境（conda create --clone）+ 重命名（conda rename 原生命令）+ 导出 environment.yml（conda env export）+ 导入 environment.yml（conda env create -f），四入口统一同名预检 + JieTaskLog 流式输出
+- base 环境适配：隐藏搜索 Tab、仅显示 base-only 预置包（anaconda、anaconda-navigator、Anaconda 全家桶）、开放 base 安装权限、子环境自动过滤 base-only 项
+- 包管理单包升级功能：异步可升级探测（conda update --all --dry-run）+ 升级确认弹窗（当前版本→最新版本）+ 升级完成自动刷新包列表
+- 预检性能优化：环境列表预检复用 JSON 持久化缓存（envs.json），TTL 从 60s 调为 600s（10分钟），环境变动后自动失效
+- bug 修复：clone/rename/import yml 三个 worker 函数修正（tasks.run_worker→run_in_thread；task['id']→task['task_id']；HTTP 400 预检失败改 200）；重命名/克隆未变更名称补 msg 提示
+----------------------------------------------------------------------
+v1.1.3
+- 常用包推荐 + 一键套装预置（P3 第二步完成）：config.py 预置 7 大分类 ~50 个常用包 + 5 个一键套装，Django 模板双份传参（dict 给模板循环 + JSON 给 JS），包安装页面重构为 Tab 式布局
+- 安装队列从底部移至右侧独立 card，不与主内容卡嵌套，高度不强制限制
+- 预置数据增补：R 生态补 r-base / r-essentials；anaconda 元包入数据分析分类和套装；anaconda-navigator 入开发工具分类和套装
+- 一键套装改用 Conda 官方元包（anaconda / anaconda-navigator），一行装完科学计算全套 100+ 包
+----------------------------------------------------------------------
+v1.1.2
+- Conda 自身升级功能（P4 完成）：env_manage/distro_list 双入口异步 dry-run 探测新版本，JieTaskLog 流式升级，升级后自动 scan_registry + upsert 刷新 storage 版本号
+- 修复 check_conda_update 独立 subprocess.run 漏 env=_safe_env() 导致 Django 进程环境污染触发 ModuleNotFoundError: conda.cli
+- 修复 api_upgrade_conda 前端发 JSON body 后端用 request.POST.get() 拿不到的问题，兼容两种取参方式
+- 修复 invalidate_versions_cache 命名不一致（单数/复数）导致升级任务失败
+- 发行版列表 UI 收敛：三路分支（0/1/多发行版），单发行版简化为信息卡视图；下载安装按钮只在无发行版时显示；每次渲染前自动 scan_registry 探测
+- 发行版升级按钮仅在有新版本时出现（异步探测）
+- 面包屑统一：6 处第一级全部指向 conda:index，名称统一"环境管理"
+- 删除环境接入 JieTaskLog 流式异步（同步阻塞→后台线程）
+- 清理 BLOCKLISTED_PACKAGES 黑名单机制（需求取消）：config.py 定义 + views.py import/context/拦截逻辑 + pkg_install.html 全部 blocklist 痕迹
+----------------------------------------------------------------------
+v1.1.0
+- 取消Conda多版本隔离机制，完全对齐官方管理模式
+- 包管理完整闭环（P3 完成）：搜索包（模糊匹配）→ 选版本 → 加队列 → JieTaskLog 流式安装 + 卸载 + 升级
+- 独立包安装页面 pkg_install.html：搜索框、版本选择弹窗、安装队列管理、JieTaskLog 黑底日志窗
+- 新增 API：api_search_packages / api_search_versions / api_install_pkg / api_remove_pkg / api_upgrade_pkg
+- base 环境全面锁定：前端 env_manage.html 点 base 时工具栏禁用 + 包列表"base 受保护" + 包卡片上方红色提示条；后端三个 API base 环境直接 400
+- 黑名单机制（config.py BLOCKLISTED_PACKAGES）：anaconda-navigator / navigator-updater 因隔离模型不兼容禁止安装，后续有新不兼容包只需加一行
+- 发行版列表顶端说明横幅：明确告知 jieEnv 隔离设计 + 不支持原生 Navigator
+- 修复 _run_conda_once 参数名不匹配导致的 TypeError（install_dir → conda_user_dir）
+- 修复 api_search_versions 硬编码只限 python/r-base 的 bug，改为通用包搜索
+----------------------------------------------------------------------
+v1.0.2
+- 配置隔离方案修正：conda 26 已移除 CONDA_USER_DIR，改用 HOME + USERPROFILE 重定向，跨 conda 所有版本通用
+- 隔离范围扩大：从仅用户级配置扩展为 .condarc / environments.txt / pkgs / AppData 全链路隔离
+- P0 Phase 0 配置隔离接线完成：7 个 conda_ops 核心函数新增 install_dir 参数，views.py 6 处调用点传入发行版 install_dir，配置页面写的 .condarc 与 conda 执行时读的是同一个文件
+- 修复 UTF-8 BOM 导致 conda YAML 静默丢弃 channels 字段的陷阱（config_manager 用 pathlib.write_text 不带 BOM，天然安全）
+----------------------------------------------------------------------
+v1.0.1
+- 创建环境接入 JieTaskLog 实时日志弹窗：后台线程 + 流式输出 conda 完整日志，解决长耗时同步阻塞无反馈的问题
+- 新增 create_env_streaming() 函数（subprocess.Popen 逐行读 stdout，通过 log_cb 回调吐日志）
+- 前端创建环境表单提交后，不再转圈等待，立即弹黑底日志窗实时滚动
+----------------------------------------------------------------------
+v1.0.0
+- conda 管理应用首发版本
+- 多发行版共存：Miniconda / Miniforge 一视同仁
+- 注册表探测 + 静默安装后自动探测登记
+- 包列表：conda list + JSON 快照持久化到 data/conda/env_pkgs/
+- 下载安装：Miniconda / Miniforge 版本列表解析 + 静默安装（JustMe + RegisterPython=0 + AddToPath=0）+ JieTaskLog 全流程
+- 独立卸载页面（放弃进程监视→用户确认模式）：
+  · GUI / 静默两种模式可选
+  · 静默模式下可选 conda 原生清理参数（/RemoveCaches / /RemoveConfigFiles / /RemoveUserData，带风险提示）
+  · 强制清理安装目录残留（后端兜底 rmtree）
+  · 卸载前 env 预检：检测安装目录内非 base env，弹窗提示风险
+  · 用户点"我已卸载完成"后再扫目录、清残留、更新登记
+- 路由智能跳转：空→发行版列表，单个→直接进环境管理，多个→发行版列表
+- 遵循 jieenv 应用定位：不引入新前端框架、复用 JieTaskLog / layui layer / Bootstrap AdminLTE、同级应用完全隔离
+----------------------------------------------------------------------

@@ -1,0 +1,215 @@
+{% extends "layout_main.html" %}
+
+{% block page_content %}
+<span style="display:none">{% csrf_token %}</span>
+
+{% if not installation %}
+<div class="alert alert-warning">发行版未找到。</div>
+{% else %}
+
+<div class="card card-danger card-outline" id="uninstall-form-card">
+    <div class="card-header"><h3 class="card-title"><i class="fa fa-trash"></i> 卸载 {{ installation.display_name }}</h3></div>
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="text-muted">安装目录</label>
+            <div><code>{{ install_dir_display }}</code></div>
+        </div>
+
+        <div id="uninstall-options-area">
+            <div class="form-group">
+                <label>卸载模式</label>
+                <div class="mt-2">
+                    <div class="custom-control custom-radio">
+                        <input type="radio" id="mode-silent" name="uninstall-mode" value="silent" class="custom-control-input" checked>
+                        <label class="custom-control-label" for="mode-silent">
+                            <b>静默模式</b> — 只弹出终端窗口，无向导界面，适合无人值守
+                        </label>
+                        <div class="text-muted small ml-4 mb-2">
+                            终端会显示卸载日志，步骤可能较长时间无反应，属于正常情况
+                        </div>
+                    </div>
+                    <div class="custom-control custom-radio">
+                        <input type="radio" id="mode-gui" name="uninstall-mode" value="gui" class="custom-control-input">
+                        <label class="custom-control-label" for="mode-gui">
+                            <b>卸载向导界面模式</b> — 使用有界面的卸载向导，需要手动选择点击才能继续
+                        </label>
+                        <div class="text-muted small ml-4">
+                            需要人为选择并点击继续，卸载进度可见 。
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="custom-control custom-checkbox">
+                    <input type="checkbox" id="opt-force-cleanup" class="custom-control-input" checked>
+                    <label class="custom-control-label" for="opt-force-cleanup">
+                        卸载完成后，强制清理安装目录残留
+                    </label>
+                    <div class="text-muted small ml-4">
+                        conda 卸载程序会删除整个安装目录。如果因文件锁等原因留有残留，jieEnv 会再尝试强制删除。
+                    </div>
+                </div>
+            </div>
+
+            <div class="small alert alert-warning py-2 mb-0">
+                <i class="fa fa-info-circle text-info"></i>
+                当前操作仅影响要卸载的发行版，不会影响其他版本。
+            </div>
+        </div>
+
+        <div class="alert alert-info mt-4" id="uninstall-tips">
+            <i class="fa fa-info-circle"></i>
+            卸载会由 conda 原生卸载器执行，完成后请手动点击下方"我已卸载完成"按钮确认清理 jieEnv 中的登记记录。
+        </div>
+
+        <div class="mt-4">
+            <button type="button" id="btn-start-uninstall" class="btn btn-danger">
+                <i class="fa fa-play"></i> 启动卸载
+            </button>
+        </div>
+
+        <div id="uninstall-progress" style="display:none" class="mt-4">
+            <div id="uninstall_start" class="alert alert-warning mb-3">
+                <h5><i class="fa fa-exclamation-triangle"></i> Conda 原生卸载程序已启动</h5>
+                <p class="mb-2">系统会自动弹出 conda 的卸载窗口：</p>
+                <ul class="mb-0">
+                    <li><b>静默模式</b>：弹出终端窗口，显示 "Running pre-uninstall scripts" 等日志。</li>
+                    <li><b>GUI 模式</b>：弹出卸载向导界面</li>
+                </ul>
+                <p class="mt-2 mb-0">该过程需要一段时间，期间请勿关闭弹出的任何窗口，等待它自动完成。</p>
+            </div>
+            <button type="button" id="btn-confirm-done" class="btn btn-success btn-lg btn-block">
+                <i class="fa fa-check"></i> 我已卸载完成，确认清理
+            </button>
+            <div id="confirm-result" class="mt-3" style="display:none"></div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block js_code %}
+<script>
+var API_START = '{% url "conda:api_uninstall_installation" %}';
+var API_CONFIRM = '{% url "conda:api_uninstall_confirm" %}';
+var API_PRECHECK = '{% url "conda:api_uninstall_precheck" %}';
+var API_ENV_MANAGE = '{% url "conda:env_manage" distro_id %}';
+var DISTRO_ID = '{{ installation.id }}';
+
+$(function () {
+    function msg(text, ok) {
+        layui.use('layer', function () {
+            layui.layer.msg(text, {icon: ok ? 1 : 2, time: 3500});
+        });
+    }
+
+    $('#btn-start-uninstall').on('click', function () {
+        var silent = $('#mode-silent').is(':checked') ? '1' : '0';
+        var force_cleanup = $('#opt-force-cleanup').is(':checked') ? '1' : '0';
+
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            var checkIdx = layer.load(2, {shade: [0.3, '#fff']});
+
+            var doStart = function () {
+                layer.close(checkIdx);
+                layer.confirm(
+                    '确定要启动卸载吗？conda 原生卸载程序即将弹出。<br>' +
+                    '<b>请勿在卸载过程中手动关闭弹出的任何窗口。</b>',
+                    {icon: 7, title: '确认启动', btn: ['启动卸载', '取消']},
+                    function (idx) {
+                        layer.close(idx);
+                        var startIdx = layer.load(2);
+                        $.post(API_START, {
+                            id: DISTRO_ID, silent: silent
+                        }).done(function (res) {
+                            layer.close(startIdx);
+                            if (!res.success) {
+                                msg(res.message || '启动失败', false);
+                                return;
+                            }
+                            $('#uninstall-options-area').slideUp();
+                            $('#uninstall-tips').slideUp();
+                            $('#btn-start-uninstall').slideUp();
+                            $('#uninstall-progress').slideDown();
+                        }).fail(function () {
+                            layer.close(startIdx);
+                            msg('请求失败', false);
+                        });
+                    }
+                );
+            };
+
+            $.get(API_PRECHECK, {id: DISTRO_ID}).done(function (res) {
+                if (!res.success) { layer.close(checkIdx); doStart(); return; }
+                var envs = res.envs || [];
+                if (!envs.length) { layer.close(checkIdx); doStart(); return; }
+                var list = envs.map(function (e) {
+                    return '<li><b>' + e.name + '</b> <small class="text-muted">' + e.prefix + '</small></li>';
+                }).join('');
+                layer.open({
+                    type: 1, shadeClose: true,
+                    title: '<b class="text-warning">⚠ 检测到安装目录内有 ' + envs.length + ' 个环境</b>',
+                    content: '<div style="padding:18px 20px;line-height:1.7">' +
+                        '<p class="text-danger mb-2">卸载会连同以下环境一起删除：</p>' +
+                        '<ul class="mb-3 ml-3">' + list + '</ul>' +
+                        '<div class="text-muted small mb-3">如果这些环境还在使用，建议先取消，去环境管理页删除它们。</div>' +
+                        '<div class="text-center">' +
+                        '<button type="button" class="btn btn-success" id="btn-continue-uninstall">确认卸载</button> ' +
+                        '<button type="button" class="btn btn-warning" id="btn-cancel-uninstall">取消，先去删环境</button>' +
+                        '</div></div>',
+                    area: ['480px', 'auto']
+                });
+                $('#btn-continue-uninstall').on('click', function () {
+                    layer.closeAll();
+                    doStart();
+                });
+                $('#btn-cancel-uninstall').on('click', function () {
+                    layer.closeAll();
+                    window.location.href = API_ENV_MANAGE;
+                });
+            }).fail(function () {
+                layer.close(checkIdx);
+                doStart();
+            });
+        });
+    });
+
+    $('#btn-confirm-done').on('click', function () {
+        var force_cleanup = $('#opt-force-cleanup').is(':checked') ? '1' : '0';
+        layui.use('layer', function () {
+            var layer = layui.layer;
+            layer.confirm(
+                '确认 conda 卸载程序已经完成并关闭了吗？<br>确认后将清理 jieEnv 中的发行版登记记录。',
+                {icon: 3, title: '确认卸载完成', btn: ['确认清理', '还没完成']},
+                function (idx) {
+                    layer.close(idx);
+                    var loadIdx = layer.load(2);
+                    $.post(API_CONFIRM, {id: DISTRO_ID, force_cleanup: force_cleanup}).done(function (res) {
+                        layer.close(loadIdx);
+                        $('#uninstall_start').hide();
+                        $('#btn-confirm-done').hide();
+                        var $r = $('#confirm-result').show();
+                        if (res.success) {
+                            var html = '<div class="alert alert-success">' +
+                                '<i class="fa fa-check-circle"></i> <b>' + res.message + '</b>';
+                            if (res.cleanup_msg) html += '<br><small>' + res.cleanup_msg + '</small>';
+                            html += '</div>';
+                            html += '<a href="{% url "conda:distro_list" %}" class="btn btn-primary">返回发行版列表</a>';
+                            $r.html(html);
+                        } else {
+                            $r.html('<div class="alert alert-danger">' + res.message + '</div>');
+                        }
+                    }).fail(function () {
+                        layer.close(loadIdx);
+                        msg('请求失败', false);
+                    });
+                }
+            );
+        });
+    });
+});
+</script>
+{% endblock %}
