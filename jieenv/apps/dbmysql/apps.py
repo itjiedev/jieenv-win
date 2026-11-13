@@ -86,3 +86,10 @@ class DbmysqlConfig(AppConfig):
             provider_services.check_db_exists,
             '检查 db_name 是否已存在'
         )
+
+        try:
+            from . import hooks
+            hooks.on_enable({})
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning('dbmysql provider 自动注册失败: %s', e)

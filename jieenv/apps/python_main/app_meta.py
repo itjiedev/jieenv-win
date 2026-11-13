@@ -12,7 +12,7 @@ def _has_child_apps():
 meta = {
     'app_name': 'python_main',
     'display_name': 'python-主应用',
-    'version': '1.21.0',
+    'version': '1.21.1',
     'description': 'python语言环境主应用，提供按钮式导航框架、开发工具管理，pip包管理通用服务、全局PyPI源配置,常用开发工具安装等基础功能',
     "is_platform_fixed": True,
     "is_enabled": True,

@@ -2,7 +2,7 @@ meta = {
     # 基础信息
     'app_name': 'dbmysql',
     'display_name': 'mysql数据库管理',
-    'version': '1.14.0',
+    'version': '1.14.1',
     'description': '安装管理数据库Mysql',
     'is_root': False,
     'url_prefix': 'db',

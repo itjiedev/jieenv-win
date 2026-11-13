@@ -1,3 +1,7 @@
+v1.14.1
+- apps.py ready() 末尾自动调 hooks.on_enable({}) 注册 db.mysql provider：
+  修复 Django 重启后 provider_catalog 为空、项目创建时误判"未安装"的 bug
+-------------------------------------------------------------------------
 v1.14.0
 - mysql_resolve.py _find_service 修复：defaults-file 兜底分支补路径包含关系比对，
   确保多实例环境下不会错误命中第一个 MySQL 服务

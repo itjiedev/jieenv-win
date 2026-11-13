@@ -280,24 +280,6 @@ def _run_python_module(context):
         stderr = (result.stderr or result.stdout or '').strip()
         return {'success': False, 'error': stderr[:500]}
 
-    if project_name:
-        subproj = _os.path.join(target_dir, project_name)
-        if _os.path.isdir(subproj):
-            import shutil
-            merged = []
-            for item in os.listdir(subproj):
-                dst = _os.path.join(target_dir, item)
-                if _os.path.exists(dst):
-                    continue
-                shutil.move(_os.path.join(subproj, item), dst)
-                merged.append(item)
-            try:
-                _os.rmdir(subproj)
-            except OSError:
-                pass
-            if merged:
-                _log.info('run_python_module: merge %d items from subdir %s', len(merged), project_name)
-
     return {
         'success': True,
         'message': f'python -m {module_name} {args_str} 执行成功',
@@ -506,3 +488,10 @@ class PythonConfig(AppConfig):
             'python_main', 'provider_health_check',
             _provider_health_check,
             'runtime.python provider 级别健康检测（无参数，健康缓存可直接调）')
+
+        try:
+            from . import hooks
+            hooks.on_enable({})
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning('python_main provider 自动注册失败: %s', e)

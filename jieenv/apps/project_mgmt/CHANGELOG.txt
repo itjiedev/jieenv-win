@@ -1,3 +1,8 @@
+v1.1.1
+- Django startproject args 修复为 `startproject {PROJECT_SUB_DIR} .`：
+  第二个参数用 `.` 指向 cwd（project_dir），Django 平铺 manage.py 到根目录，
+  但 settings 包独立在 project_name/ 子目录，结构为 project_dir/manage.py + project_dir/project_name/settings.py
+-------------------------------------------------------------------------
 v1.0.0
 - 修复部分BUG
 -------------------------------------------------------------------------

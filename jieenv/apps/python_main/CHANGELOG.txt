@@ -1,3 +1,9 @@
+v1.21.1
+- _run_python_module 删除 merge 后处理（subproj/shutil.move 平铺逻辑）：
+  不再把 Django 嵌套子目录的内容强行平铺到 project_dir 根目录
+- apps.py ready() 末尾自动调 hooks.on_enable({}) 注册 runtime.python provider：
+  修复 Django 重启后 provider_catalog 为空、项目创建时误判"未安装"的 bug
+----------------------------------------------------------------------
 v1.21.0
 - runtime.python provider env_hints 补全「直接指定 Python 解释器」模式（use_venv=False）：
   get_env_hints 新增 use_venv=False 分支，返回 PATH_prepend=[python_exe 所在目录]，

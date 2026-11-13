@@ -43,7 +43,7 @@ BUILTIN_TEMPLATES = [
 
             {'type': 'python_module', 'target_provider_key': 'runtime.python',
              'invoke_action': 'run_python_module',
-             'params': {'module': 'django', 'args': 'startproject {PROJECT_SUB_DIR} "{PROJECT_DIR}"'},
+             'params': {'module': 'django', 'args': 'startproject {PROJECT_SUB_DIR} .'},
              'label': 'Django 项目脚手架',
              'project_dir_fix': 'python_module_name'},
         ],
@@ -71,7 +71,7 @@ BUILTIN_TEMPLATES = [
 
             {'type': 'python_module', 'target_provider_key': 'runtime.python',
              'invoke_action': 'run_python_module',
-             'params': {'module': 'django', 'args': 'startproject {PROJECT_SUB_DIR} "{PROJECT_DIR}"'},
+             'params': {'module': 'django', 'args': 'startproject {PROJECT_SUB_DIR} .'},
              'label': 'Django 项目脚手架',
              'project_dir_fix': 'python_module_name'},
         ],

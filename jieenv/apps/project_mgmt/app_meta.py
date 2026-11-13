@@ -1,7 +1,7 @@
 meta = {
     'app_name': 'project_mgmt',
     'display_name': 'project项目管理',
-    'version': '1.1.0',
+    'version': '1.1.1',
     'description': '项目生命周期管理，基于 provider_catalog + event_bus + app_services 三层积木式架构',
     "is_platform_fixed": False,
     "is_enabled": True,
