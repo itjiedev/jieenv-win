@@ -1,3 +1,25 @@
+v1.41.0
+- 平台升级页面 changelog 显示优化：按分隔线切分，默认只显示最近 5 条，历史版本折叠隐藏
+- 全项目 CHANGELOG.txt 统一分隔线规范：40 个连字符（正则匹配 \n-{8,}\n? 兼容历史变体）
+----------------------------------------
+v1.40.0
+- pip_deps.py 修复：PIP_NAME_RE 正则扩容，支持 PEP 508 extras 语法（如 psycopg[binary]）
+- get_installed_version() 修复：查询已安装版本前自动剥掉 [extras] 后缀
+----------------------------------------------------------------------
+v1.39.0
+- jiecore_tasklog.js 修复：onSuccess 回调函数现在接收 task result 对象参数
+  使调用方可以检查 result.restart_required 状态，修复升级后直接 reload
+  导致服务未就绪时页面请求失败的问题
+- 保持向后兼容：不使用 result 参数的现有 onSuccess 回调不受影响
+----------------------------------------------------------------------
+v1.38.0
+- app_manager.py run_migrations() 修复：无 migrations 目录的应用（project_mgmt、mainapp 等）
+  不再被 Django migrate 报错拦截，重扫/安装正常完成
+- app_manager.py rescan_app() 修复：显式清 _PLATFORM_FIXED_CACHE + changes diff 追加
+  is_platform_fixed 变更输出
+- _build_helper.py 打包辅助脚本修复：改用 AST 安全解析 app_meta.py，避免 exec_module
+  加载有顶层 import 的应用（python_main）静默失败；同时修复 UTF-8 BOM 识别
+----------------------------------------------------------------------
 v1.37.0
 - 修正应用骨架模板 createapp（app_template/）与项目初始化模板 jieinit（config_template/），
   确保新生成应用和空项目从一开始就符合 jiecore 规范：

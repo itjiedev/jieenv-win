@@ -1,0 +1,33 @@
+v1.1.0
+- 新应用 devtools 完成，开发工具统一管理平台
+- 架构：services/{tool_id}/ 自动包扫描 + provider_catalog 双注册
+- PyCharm 完整管理：版本列表/详情/安装/卸载/启动，版本缓存过滤空链接
+- VSCode 完整管理：版本列表/详情/安装/卸载/启动，下载地址修复
+- 首页 AdminLTE pills 分类导航、下载缓存清理按钮、秒开优化
+- 模板全量修正：从 python_main/layout.html 改为 layout_main.html
+----------------------------------------------------------------------
+v1.0.2
+- PyCharm 版本缓存过滤空链接，不再写入无效条目
+----------------------------------------------------------------------
+v1.0.1
+- 首页缓存策略优化，前端 layui layer.load() 异步拉取后 reload，首次打开秒开不阻塞
+- VSCode 新增版本列表页面：devtools:vscode_versions，仅展示最新版 User/System 两个安装类型，
+  已安装时隐藏安装按钮；与 PyCharm 版本列表页体验统一
+- VSCode 下载地址修复
+- 首页新增「清理下载缓存」按钮：layui confirm + AJAX 调用 api_cleanup_downloads，
+  删除 devtools/downloads 目录全部安装文件
+- 已安装版本号显示修复：VSCode 的 DisplayName 不含版本号，自动拼接 version_str
+----------------------------------------------------------------------
+v1.0.0
+- 新应用 devtools 创建，开发工具统一管理平台
+- 架构：pkgutil 自动包扫描（services/{tool_id}/__init__.py 约定 register_devtool()）
+  + provider_catalog 双注册（内部 tool_registry 渲染首页，外部 provider 供 project_mgmt 编排）
+- 首页 AdminLTE pills 分类导航 + ?cat= 链接跳转，URL 可分享
+- PyCharm 管理完整搬迁：版本列表/详情/安装/卸载/启动及全部 API（7 路由 + 5 视图类）
+  服务层拆为 services/pycharm/{config,versions,installer}.py
+- VSCode 管理完整搬迁：详情/安装/卸载/启动及全部 API（6 路由 + 3 视图类）
+  服务层拆为 services/vscode/{config,installer}.py
+- 模板命名空间全量修正：4 个模板内 16 处 python_main: 改为 devtools:
+  继承基类从 python_main/layout.html 改为 layout_main.html（去掉 python_main 专属按钮依赖）
+- app_meta 依赖修正：jiecore>=1.36.0（之前误写 >=1.50.0 导致安装后侧边栏不显示）
+----------------------------------------------------------------------

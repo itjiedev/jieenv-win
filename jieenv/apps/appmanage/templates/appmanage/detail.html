@@ -54,8 +54,18 @@
         <h3 class="card-title">更新日志</h3>
     </div>
     <div class="card-body">
-{% if app.changelog %}
-        <pre class="mb-0" style="white-space: pre-wrap;">{{ app.changelog }}</pre>
+{% if app.changelog_recent %}
+{% for entry in app.changelog_recent %}
+        <pre class="mb-0 mt-1 p-1" style="white-space: pre-wrap;">{{ entry }}</pre>
+{% endfor %}
+{% if app.changelog_more %}
+<div id="changelog-more" style="display:none;">
+{% for entry in app.changelog_more %}
+        <pre class="mb-0 mt-1 p-1" style="white-space: pre-wrap;">{{ entry }}</pre>
+{% endfor %}
+</div>
+<button class="btn btn-link btn-sm p-0" onclick="var m=document.getElementById('changelog-more');m.style.display=m.style.display==='none'?'block':'none';this.textContent=m.style.display==='none'?'查看更多历史更新':'收起历史更新'">查看更多历史更新</button>
+{% endif %}
 {% else %}
         <span class="text-muted">暂无更新日志</span>
 {% endif %}

@@ -1,10 +1,32 @@
-{% extends "python_main/layout.html" %}
+{% extends "layout_main.html" %}
 {% load static %}
 
 {% block js_code %}
 <script>
 layui.use(['layer', 'jquery', 'util'], function () {
     var layer = layui.layer, $ = layui.$, util = layui.util;
+
+    {% if need_fetch %}
+    var _loadIdx = layer.msg('正在从 Microsoft 官方抓取 VSCode 最新版本信息，请稍候...', {
+        icon: 16, shade: 0.3, time: 0
+    });
+    $.ajax({
+        url: '{% url "devtools:api_vscode_latest_refresh" %}',
+        type: 'POST', dataType: 'json', timeout: 5 * 60 * 1000,
+        success: function (res) {
+            layer.close(_loadIdx);
+            if (res && res.code === 0) {
+                layer.msg('抓取完成，正在刷新页面...', { icon: 1, time: 800 }, function () { location.reload(); });
+            } else {
+                layer.msg((res && res.msg) || '抓取失败，请稍后重试', { icon: 2 });
+            }
+        },
+        error: function () {
+            layer.close(_loadIdx);
+            layer.msg('网络请求失败，请稍后重试', { icon: 2 });
+        }
+    });
+    {% endif %}
 
     // 选择安装目录：复用 jiecore 通用目录选择器。
     // VSCode 无版本区分，直接回填用户选择的目录本身（不追加子目录后缀）。
@@ -39,7 +61,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                 layer.close(index);
                 // 后端登记 jiecore.tasks 后台任务（下载 + 按需提权静默安装）并回传 task_id，
                 // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
-                $.post('{% url "python_main:api_vscode_install" %}', {
+                $.post('{% url "devtools:api_vscode_install" %}', {
                     installer_type: installerType,
                     install_dir: installDir
                 }).done(function (res) {
@@ -51,7 +73,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                         title: '安装 VSCode',
                         taskId: res.task_id,
                         onSuccess: function () {
-                            window.location.href = "{% url 'python_main:vscode_detail' %}";
+                            window.location.href = "{% url 'devtools:vscode_detail' %}";
                         },
                         onFail: function (result) {
                             layer.alert((result && result.message) || '安装失败', {icon: 2, title: null});
@@ -75,12 +97,12 @@ layui.use(['layer', 'jquery', 'util'], function () {
 </script>
 {% endblock %}
 
-{% block provider_content %}
+{% block page_content %}
 <div class="card">
     <div class="card-header">
         <div class="row align-items-center">
             <div class="col-md-1">
-                <img src="{% static 'python_main/vscode.svg' %}" style="width: 54px; height: 54px"/>
+                <img src="{% static 'devtools/vscode.svg' %}" style="width: 54px; height: 54px"/>
             </div>
             <div class="col-md-11 layui-font-18 text-bold">安装 Visual Studio Code</div>
         </div>
@@ -91,7 +113,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
             {% if latest_error %}
             <div class="alert alert-danger">
                 获取 VSCode 最新版信息失败：{{ latest_error }}<br>
-                请检查网络后 <a href="{% url 'python_main:vscode_install' %}" class="alert-link">重试</a>。
+                请检查网络后 <a href="{% url 'devtools:vscode_install' %}" class="alert-link">重试</a>。
             </div>
             {% endif %}
 
@@ -109,7 +131,8 @@ layui.use(['layer', 'jquery', 'util'], function () {
                 <div class="col-sm-9">
                     <div class="custom-control custom-radio">
                         <input type="radio" id="installer-user"
-                               name="vscode_installer" value="user" checked
+                               name="vscode_installer" value="user"
+                               {% if selected_installer_type == 'user' %}checked{% endif %}
                                data-label="{{ installer_labels.user }}"
                                data-version="{% if latest.user %}{{ latest.user.productVersion }}{% endif %}"
                                title='{{ installer_labels.user }}'
@@ -119,6 +142,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                     <div class="custom-control custom-radio mt-2">
                         <input type="radio" class="custom-control-input" id="installer-system"
                                name="vscode_installer" value="system"
+                               {% if selected_installer_type == 'system' %}checked{% endif %}
                                data-label="{{ installer_labels.system }}"
                                data-version="{% if latest.system %}{{ latest.system.productVersion }}{% endif %}"
                                title='{{ installer_labels.system }}'
@@ -152,7 +176,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
             <button type="button" class="btn btn-success" lay-on="install">
                 <i class="fa fa-download"></i> 安装
             </button>
-            <a href="{% url 'python_main:dev_tools' %}" class="btn btn-secondary float-right">取消</a>
+            <a href="{% url 'devtools:index' %}" class="btn btn-secondary float-right">取消</a>
         </div>
     </form>
 </div>

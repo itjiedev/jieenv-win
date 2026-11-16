@@ -1,11 +1,3 @@
-"""
-抓取 PyCharm 官网版本列表与下载地址。
-
-数据源：https://data.services.jetbrains.com/products/releases?code=PCP&latest=false&type=release
-JetBrains 提供 JSON API 获取版本列表。
-
-版本列表缓存到 data/pycharm_versions.json。
-"""
 import re
 import json
 import gzip
@@ -15,12 +7,11 @@ from datetime import datetime
 
 from jiecore.json_storage import JsonStore
 from jiecore.utils import parse_version
-from .config import PYCHARM_VERSION_CACHE_FILE
+from apps.devtools.services.pycharm.config import PYCHARM_VERSION_CACHE_FILE
 
 logger = logging.getLogger(__name__)
 
 JETBRAINS_API = 'https://data.services.jetbrains.com/products/releases'
-# DOWNLOAD_URL_PREFIX = 'https://download-cdn.jetbrains.com/python/'
 
 USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
               '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')
@@ -34,18 +25,20 @@ FETCH_TIMEOUT = 20
 
 FALLBACK_VERSIONS = [
     {
+      "date": "2026-11-05",
+      "type": "release",
+      "version": "2026.3",
+      "majorVersion": "2026.3",
+      "build": "263.7307.206",
+      "downloads": {"windows": {"link": "https://download.jetbrains.com/python/pycharm-professional-2026.3.exe"}},
+    },
+    {
       "date": "2026-09-07",
       "type": "release",
       "version": "2026.2.2",
       "majorVersion": "2026.2",
       "build": "262.10315.174",
-    },
-    {
-      "date": "2026-08-13",
-      "type": "release",
-      "version": "2026.1.5",
-      "majorVersion": "2026.1",
-      "build": "261.27258.51",          
+      "downloads": {"windows": {"link": "https://download.jetbrains.com/python/pycharm-professional-2026.2.2.exe"}},
     }
 ]
 
@@ -97,8 +90,9 @@ def fetch_pycharm_versions(limit_ver: int = 2016) -> dict:
                 info['mainVersion'] = info['version'].split('.')[0]
             if int(info['mainVersion']) < limit_ver: break
             info['build'] = product.get('build', '')
-            info['downloads'] = product.get('downloads', {})           
+            info['downloads'] = product.get('downloads', {})
             entry = build_version_entry(info)
+            if not entry['exe_url']: continue
             versions.setdefault(info['mainVersion'], {}).setdefault(info['majorVersion'], {})[info['version']] = entry
 
     except Exception as e:
@@ -116,8 +110,9 @@ def fetch_pycharm_versions(limit_ver: int = 2016) -> dict:
             else:
                 info['mainVersion'] = info['version'].split('.')[0]
             info['build'] = product.get('build', '')
-            info['downloads'] = product.get('downloads', {})           
+            info['downloads'] = product.get('downloads', {})
             entry = build_version_entry(info)
+            if not entry['exe_url']: continue
             versions.setdefault(info['mainVersion'], {}).setdefault(info['majorVersion'], {})[info['version']] = entry
 
         return {
@@ -159,7 +154,7 @@ def _save_version_cache(result: dict):
         logger.warning('PyCharm 版本缓存保存失败: %s', e)
 
 
-def get_pycharm_versions(refresh: bool = False, limit_ver: int = 2016) -> dict:
+def get_pycharm_versions(refresh: bool = False, limit_ver: int = 2016, allow_fetch: bool = True) -> dict:
     if not refresh:
         cached = _load_version_cache()
         if cached:
@@ -170,6 +165,14 @@ def get_pycharm_versions(refresh: bool = False, limit_ver: int = 2016) -> dict:
                 'message': f"本地缓存（抓取于 {cached.get('fetched_at', '未知时间')}），"
                            '点"重新抓取"可从官网更新',
                 'versions': cached['versions'],
+            }
+        if not allow_fetch:
+            return {
+                'success': True,
+                'source': 'none',
+                'fetched_at': '',
+                'message': '尚无版本缓存，请点击下方按钮从官网抓取',
+                'versions': {},
             }
     result = fetch_pycharm_versions(limit_ver)
     result['fetched_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

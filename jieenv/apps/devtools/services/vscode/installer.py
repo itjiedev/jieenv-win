@@ -1,16 +1,3 @@
-"""
-VSCode（Visual Studio Code）安装 / 探测 / 卸载支持。
-
-与 PyCharm 不同，VSCode 官方不区分历史版本下载，统一从 update API 取最新稳定版：
-    https://update.code.visualstudio.com/api/update/win32-x64{suffix}/stable/latest
-其中 suffix 为 '-user'（User Installer）或 ''（System Installer），返回 JSON 含
-url / productVersion / sha256hash 等字段，url 即实际 CDN 下载地址。
-
-安装器为 Inno Setup，静默参数 /VERYSILENT /NORESTART /SUPPRESSMSGBOXES
-/MERGETASKS=... /DIR="..."。提权策略按需：
-- System Installer 机器级安装（写 HKLM），一律提权；
-- User Installer 目录在用户可写区域时不提权，否则提权。
-"""
 import os
 import json
 import time
@@ -23,13 +10,17 @@ from datetime import datetime
 
 from jiecore.json_storage import JsonStore
 from jiecore.system_ops import run_elevated
-from .config import (VSCODE_INSTALLED_SOURCES_FILE, VSCODE_DOWNLOAD_DIR,
-                     VSCODE_LATEST_CACHE_FILE, DEV_TOOLS_INSTALL_ROOT)
+
+from apps.devtools.config import DEV_TOOLS_INSTALL_ROOT
+from apps.devtools.services.vscode.config import (
+    VSCODE_INSTALLED_SOURCES_FILE, VSCODE_DOWNLOAD_DIR,
+    VSCODE_LATEST_CACHE_FILE,
+)
 
 logger = logging.getLogger(__name__)
 
-# update API：win32-x64-user（User Installer）/ win32-x64（System Installer）
 VSCODE_UPDATE_API = 'https://update.code.visualstudio.com/api/update/win32-x64{suffix}/stable/latest'
+VSCODE_DOWNLOAD_BASE = 'https://code.visualstudio.com/sha/download?build=stable&os=win32-x64{suffix}'
 INSTALLER_TYPES = ('user', 'system')
 INSTALLER_LABELS = {'user': 'User Installer（用户）',
                     'system': 'System Installer（系统）'}
@@ -39,15 +30,11 @@ USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
 BROWSER_HEADERS = {'User-Agent': USER_AGENT, 'Accept': 'application/json'}
 FETCH_TIMEOUT = 20
 
-# 下载重试次数
 DOWNLOAD_MAX_ATTEMPTS = 3
 
-# 静默安装耗时较短（解压 + 写注册表），给足超时
 _VSCODE_INSTALL_TIMEOUT = 600
-# 子进程隐藏窗口标志，避免闪现黑色控制台
 _CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
 
-# Inno Setup 附加任务：不自动运行、加桌面图标，其他不运行
 _VSCODE_MERGE_TASKS = ('!runcode,desktopicon')
 
 _vscode_store = JsonStore(VSCODE_INSTALLED_SOURCES_FILE, default={})
@@ -58,29 +45,33 @@ class PythonVscodeError(Exception):
     pass
 
 
-# ── 最新版下载信息 ──────────────────────────────────────
-
 def _api_url(installer_type: str) -> str:
     suffix = '-user' if installer_type == 'user' else ''
     return VSCODE_UPDATE_API.format(suffix=suffix)
 
 
+def _build_download_url(installer_type: str) -> str:
+    suffix = '-user' if installer_type == 'user' else ''
+    return VSCODE_DOWNLOAD_BASE.format(suffix=suffix)
+
+
 def fetch_vscode_latest(installer_type: str = 'user') -> dict:
-    """从官方 update API 抓取指定 installer 类型的最新稳定版下载信息。"""
     if installer_type not in INSTALLER_TYPES:
         raise PythonVscodeError(f'未知的 installer 类型: {installer_type}')
     url = _api_url(installer_type)
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
     with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as resp:
         data = json.loads(resp.read().decode('utf-8'))
-    download_url = (data.get('url') or '').strip()
-    if not download_url:
-        raise PythonVscodeError('update API 未返回下载地址')
-    filename = download_url.rstrip('/').split('/')[-1] or f'VSCodeSetup-{installer_type}.exe'
+    download_url = _build_download_url(installer_type)
+    product_version = data.get('productVersion', '')
+    filename = (
+        f'VSCodeUserSetup-x64-{product_version}.exe' if installer_type == 'user'
+        else f'VSCodeSetup-x64-{product_version}.exe'
+    )
     return {
         'installer_type': installer_type,
         'installer_label': INSTALLER_LABELS.get(installer_type, installer_type),
-        'productVersion': data.get('productVersion', ''),
+        'productVersion': product_version,
         'url': download_url,
         'filename': filename,
         'sha256hash': data.get('sha256hash', ''),
@@ -88,11 +79,12 @@ def fetch_vscode_latest(installer_type: str = 'user') -> dict:
     }
 
 
-def get_vscode_latest(installer_type: str = 'user', refresh: bool = False) -> dict:
-    """取最新版下载信息（带本地缓存）。抓取失败时回退到缓存，缓存也没有则抛出。"""
+def get_vscode_latest(installer_type: str = 'user', refresh: bool = False, allow_fetch: bool = True) -> dict:
     cache = _latest_cache.read() or {}
     if not refresh and cache.get(installer_type):
         return cache[installer_type]
+    if not refresh and not cache.get(installer_type) and not allow_fetch:
+        return {}
     try:
         info = fetch_vscode_latest(installer_type)
     except Exception as e:
@@ -108,16 +100,12 @@ def get_vscode_latest(installer_type: str = 'user', refresh: bool = False) -> di
     return info
 
 
-def get_vscode_latest_all(refresh: bool = False) -> dict:
-    """抓取 user / system 两种 installer 的最新版，返回 {installer_type: info|None}。
-
-    任一类型抓取失败不阻断另一类型；全部失败时抛出最后一条异常。
-    """
+def get_vscode_latest_all(refresh: bool = False, allow_fetch: bool = True) -> dict:
     result = {}
     last_error = None
     for it in INSTALLER_TYPES:
         try:
-            result[it] = get_vscode_latest(it, refresh=refresh)
+            result[it] = get_vscode_latest(it, refresh=refresh, allow_fetch=allow_fetch)
         except Exception as e:
             logger.warning('抓取 VSCode %s 最新版失败: %s', it, e)
             result[it] = None
@@ -127,10 +115,7 @@ def get_vscode_latest_all(refresh: bool = False) -> dict:
     return result
 
 
-# ── 下载 ────────────────────────────────────────────────
-
 def _probe_remote_size(url: str) -> int:
-    """探测远端文件大小，失败返回 0。"""
     try:
         head = urllib.request.Request(url, headers=BROWSER_HEADERS, method='HEAD')
         with urllib.request.urlopen(head, timeout=15) as resp:
@@ -141,7 +126,6 @@ def _probe_remote_size(url: str) -> int:
 
 
 def _download_once(url: str, exe_path: pathlib.Path, total: int, on_progress=None) -> int:
-    """单次下载，返回实际写入的字节数。若中途出错会抛出异常。"""
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
     downloaded = 0
     chunk_size = 1024 * 256
@@ -159,12 +143,6 @@ def _download_once(url: str, exe_path: pathlib.Path, total: int, on_progress=Non
 
 
 def download_vscode(url: str, filename: str, on_progress=None) -> pathlib.Path:
-    """下载 VSCode 安装包到 tmp 下载目录，返回本地文件路径。
-
-    - 已下载完整（本地大小 >= 远端 Content-Length）则直接复用，避免重复下载；
-    - 最多尝试 3 次下载，每次失败会清理未完成的临时文件后重试；
-    - 三次都失败则抛出 PythonVscodeError。
-    """
     VSCODE_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     exe_path = VSCODE_DOWNLOAD_DIR / filename
 
@@ -175,7 +153,6 @@ def download_vscode(url: str, filename: str, on_progress=None) -> pathlib.Path:
             on_progress(f'检测到已下载的安装包，直接复用: {exe_path}')
         return exe_path
 
-    # 若存在不完整的旧文件，先删除
     if exe_path.exists():
         try:
             exe_path.unlink()
@@ -188,7 +165,6 @@ def download_vscode(url: str, filename: str, on_progress=None) -> pathlib.Path:
             on_progress(f'开始下载（第 {attempt}/{DOWNLOAD_MAX_ATTEMPTS} 次）: {url}')
         try:
             downloaded = _download_once(url, exe_path, total, on_progress=on_progress)
-            # 若已知远端大小，则校验是否完整
             if total and downloaded < total:
                 raise PythonVscodeError(
                     f'下载不完整：{downloaded}/{total} 字节')
@@ -200,13 +176,11 @@ def download_vscode(url: str, filename: str, on_progress=None) -> pathlib.Path:
             logger.warning('VSCode 下载第 %d 次失败: %s', attempt, e)
             if on_progress:
                 on_progress(f'第 {attempt} 次下载失败: {e}')
-            # 清理可能残留的半截文件
             if exe_path.exists():
                 try:
                     exe_path.unlink()
                 except OSError:
                     pass
-            # 最后一次失败后不再等待
             if attempt < DOWNLOAD_MAX_ATTEMPTS:
                 if on_progress:
                     on_progress('稍后重试...')
@@ -216,18 +190,11 @@ def download_vscode(url: str, filename: str, on_progress=None) -> pathlib.Path:
         f'下载失败，已尝试 {DOWNLOAD_MAX_ATTEMPTS} 次：{last_error}')
 
 
-# ── 安装目录与提权判定 ──────────────────────────────────
-
 def default_install_dir(installer_type: str = 'user') -> str:
-    """VSCode 默认安装目录（与 PyCharm 一致放在 dev_tools 下，无版本区分）。"""
     return str(DEV_TOOLS_INSTALL_ROOT / 'VSCode')
 
 
 def _is_dir_writable(path: str) -> bool:
-    """探测当前（非提权）进程能否在 path 写入：建目录 + 写探针文件。
-
-    会把目录提前建出来（安装器随后也要用），失败即视为需要提权。
-    """
     try:
         os.makedirs(path, exist_ok=True)
         probe = pathlib.Path(path) / '.jie_write_probe'
@@ -239,37 +206,28 @@ def _is_dir_writable(path: str) -> bool:
 
 
 def needs_elevation(install_dir: str, installer_type: str) -> bool:
-    """是否需要 UAC 提权安装。
-
-    System Installer 机器级安装（写 HKLM、默认 Program Files），一律提权；
-    User Installer 仅当目标目录当前用户不可写时才提权。
-    """
     if installer_type == 'system':
         return True
     return not _is_dir_writable(install_dir)
 
 
 def build_install_params(install_dir: str) -> str:
-    """构造 Inno Setup 静默安装参数（/DIR 必须带引号以兼容含空格路径）。"""
     return (f'/SILENT /NORESTART /SUPPRESSMSGBOXES '
             f'/MERGETASKS="{_VSCODE_MERGE_TASKS}" /DIR="{install_dir}"')
 
 
 def _run_install_process(exe_path: str, params: str, timeout: int) -> int:
-    """非提权直接运行安装程序（User Installer + 用户可写目录），返回退出码。"""
     cmd = f'"{exe_path}" {params}'
     try:
         proc = subprocess.run(cmd, timeout=timeout, creationflags=_CREATE_NO_WINDOW,
                               capture_output=True)
     except subprocess.TimeoutExpired:
-        # 统一转成 TimeoutError，与 run_elevated 的超时语义一致，供上层同一分支处理
         raise TimeoutError(f'VSCode 安装超时（{timeout} 秒）')
     return proc.returncode
 
 
 def run_silent_install(exe_path, install_dir: str, installer_type: str = 'user',
                        on_progress=None) -> int:
-    """静默安装 VSCode，返回退出码。按需提权（见 needs_elevation）。"""
     install_dir = str(install_dir).rstrip('\\/')
     params = build_install_params(install_dir)
     elevate = needs_elevation(install_dir, installer_type)
@@ -277,18 +235,14 @@ def run_silent_install(exe_path, install_dir: str, installer_type: str = 'user',
         mode = '管理员权限（UAC）' if elevate else '当前用户权限'
         on_progress(f'正在以{mode}静默安装到: {install_dir}')
         if elevate:
-            on_progress('若弹出 UAC 对话框，请点击“是”授权。')
+            on_progress('若弹出 UAC 对话框，请点击"是"授权。')
         on_progress('安装过程可能需要一段时间，请关注安装进度窗口并耐心等待...')
     if elevate:
-        # show=0：静默安装本身无界面，进度由前端 JieTaskLog 日志窗展示
         return run_elevated(str(exe_path), params, _VSCODE_INSTALL_TIMEOUT, show=0)
     return _run_install_process(str(exe_path), params, _VSCODE_INSTALL_TIMEOUT)
 
 
-# ── 探测已安装 ──────────────────────────────────────────
-
 def find_vscode_exe(install_dir: str):
-    """定位 Code.exe（VSCode 主程序直接在安装目录根下，非 bin 子目录）。"""
     base = pathlib.Path(install_dir)
     for candidate in (base / 'Code.exe', base / 'bin' / 'Code.exe'):
         if candidate.exists():
@@ -297,11 +251,6 @@ def find_vscode_exe(install_dir: str):
 
 
 def vscode_detect_installed():
-    """扫描注册表 Uninstall 键探测已安装的 VSCode，结果写入缓存并返回。
-
-    User Installer 注册在 HKCU、System Installer 注册在 HKLM，DisplayName 分别为
-    "Microsoft Visual Studio Code (User)" 与 "Microsoft Visual Studio Code"。
-    """
     import winreg
 
     def get_value(key, name, default=""):
@@ -333,8 +282,6 @@ def vscode_detect_installed():
                             if "Visual Studio Code" not in display_name:
                                 continue
                             install_location = get_value(subkey, "InstallLocation")
-                            # installType 优先按 DisplayName 的 (User) 后缀判定，
-                            # 其次按注册表 hive（HKCU=user / HKLM=system）
                             if '(User)' in display_name:
                                 install_type = 'user'
                             elif '(System)' in display_name:
@@ -371,7 +318,6 @@ def vscode_detect_installed():
 
 
 def get_vscode_options(refresh: bool = False):
-    """取本机已安装 VSCode 信息（带缓存），未安装返回 {}。"""
     cache = _vscode_store.read()
     if refresh or not cache:
         vscode_detect_installed()
@@ -379,10 +325,7 @@ def get_vscode_options(refresh: bool = False):
     return cache
 
 
-# ── 重置（清理用户配置） ────────────────────────────────
-
 def vscode_user_data_dirs() -> list:
-    """VSCode 用户配置 / 扩展目录，重置时清理。"""
     dirs = []
     appdata = os.environ.get('APPDATA')
     if appdata:
@@ -395,7 +338,6 @@ def vscode_user_data_dirs() -> list:
 
 
 def reset_vscode_settings() -> dict:
-    """删除 %APPDATA%\\Code 与 %USERPROFILE%\\.vscode，返回 {success, message, removed}。"""
     removed, errors = [], []
     for d in vscode_user_data_dirs():
         if not os.path.exists(d):

@@ -1,3 +1,7 @@
+v1.22.0
+- 移除 PyCharm / VSCode 开发工具（已迁移至 devtools 应用）
+
+----------------------------------------------------------------------
 v1.21.1
 - _run_python_module 删除 merge 后处理（subproj/shutil.move 平铺逻辑）：
   不再把 Django 嵌套子目录的内容强行平铺到 project_dir 根目录

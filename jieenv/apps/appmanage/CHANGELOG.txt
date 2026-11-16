@@ -1,3 +1,6 @@
+v1.0.8
+- detail 页面 changelog 显示优化：按分隔线切分，默认只显示最近 5 条，历史版本折叠隐藏
+----------------------------------------
 v1.0.7
 - upgrade.html 修复：升级成功后检查 result.restart_required，需要时调用
   JieOps.restartAndWait() 等待服务重启，避免页面在服务未就绪时 reload 失败

@@ -1,5 +1,6 @@
 from typing import Any
 import logging
+import re
 
 from django.urls import reverse
 from django.views.generic.list import ListView
@@ -79,6 +80,13 @@ class AppDetailView(AppManageMixin, TemplateView):
         app = context['app']
         if not app.get('changelog'):
             app['changelog'] = read_changelog_from_disk(app_name)
+        if app.get('changelog'):
+            entries = re.split(r'\n-{8,}\n?', app['changelog'])
+            app['changelog_recent'] = entries[:5]
+            app['changelog_more'] = entries[5:]
+        else:
+            app['changelog_recent'] = []
+            app['changelog_more'] = []
         return context
 
 

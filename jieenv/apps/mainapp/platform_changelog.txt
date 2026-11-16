@@ -1,3 +1,10 @@
+v1.53.0
+- 新增 devtools v1.1.0：开发工具统一管理平台（PyCharm + VSCode）
+- python_main v1.22.0：移除开发工具功能（已迁移到 devtools）
+- jiecore v1.40.0：pip extras 语法支持（psycopg[binary] 等）
+- changelog 显示优化：appmanage 应用详情页 + jiecore 平台升级页，统一按分隔线切分，默认显示最近 5 条，历史版本折叠隐藏
+- CHANGELOG.txt 分隔线规范统一：40 个连字符
+---------------------------------------
 v1.52.0
 - jiecore v1.39.0：jiecore_tasklog.js onSuccess 回调修复，接收 task result 参数，
   使升级等场景能够正确检查 restart_required 并等待服务重启

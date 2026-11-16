@@ -32,16 +32,17 @@
 - **扩展融合**：支持自定义 Provider 插件，扩展项目管理能力（如支持新的语言、数据库等，需要按规范开发）
 
 ### 运行时管理（可拆卸）
-- ** Pyhon 独立版本模式**：便捷管理完整版 Python zip运行时安装和环境管理
-- ** Python Installer模式**：便捷管理 官方 python Installer 安装程序安装和环境管理
-- ** Conda 环境管理**：便捷管理minconda或Miniforge 环境安装和管理
+- **Python 独立版本模式**：便捷管理完整版 Python zip 运行时安装和环境管理
+- **Python Installer 模式**：便捷管理官方 Python Installer 安装程序安装和环境管理
+- **Conda 环境管理**：便捷管理 miniconda 或 Miniforge 环境安装和管理
 
-### MySQL 数据库管理（可拆卸）
-- **多实例共存**：同一台机器同时跑多个 MySQL 版本
-- **可视化操作**：建库、建表、用户授权、数据导入导出
-- **服务生命周期**：启动 / 停止 / 配置文件编辑 / 端口冲突检测
+### 数据库管理（可拆卸）
+- **MySQL 管理**：同一台机器同时安装运行多个 MySQL 版本，轻量级管理
 
----
+### 开发工具（可拆卸）
+
+- **IDE/编辑器**：支持多个 IDE/编辑器 安装卸载，如 VS Code、PyCharm 等
+- **数据库客户端**：支持多个数据库客户端 安装卸载，如 DBeaver 等
 
 ## 下载文件说明
 
@@ -49,25 +50,33 @@
 
 | 文件名 | 说明 |
 |---|---|
-| `JieEnv-v1.50.1-full-setup.exe` | 全量安装包（安装程序，双击自动安装） |
-| `JieEnv-v1.50.1-full-portable.zip` | 全量压缩包（解压后运行 `install.bat` 安装） |
+| `JieEnv-v1.53.0-full-setup.exe` | 全量安装包（安装程序，双击自动安装） |
+| `JieEnv-v1.53.0-full-portable.zip` | 全量压缩包（对 exe 不放心的用户备选，解压后自行运行 `install.bat` 初始化） |
 
 ### 平台包（仅含平台固定应用，不含扩展）
 
 | 文件名 | 说明 |
 |---|---|
-| `JieEnv-platform-v1.50.1.zip` | 平台压缩包（解压后运行 `installplatform.bat`，不注册扩展应用） |
-| `JieEnv-platform-v1.50.1-install.exe` | 平台安装包（安装程序自动安装） |
+| `JieEnv-platform-v1.53.0.zip` | 平台压缩包（对 exe 不放心的用户备选，解压后自行运行 `installplatform.bat` 初始化，无扩展应用） |
+| `JieEnv-platform-v1.53.0-install.exe` | 平台安装包（安装程序自动安装，无扩展应用） |
+
+### 升级包（已安装用户，推荐）
+
+| 文件名 | 说明 |
+|---|---|
+| `JieEnv-upgrade-1.53.0.exe` | 全量守卫升级包，自动更新所有已安装的应用版本，未安装的跳过不硬塞 |
+| `JieEnv-platform-v1.53.0-upgrade.exe` | 仅骨架升级包，省流量 |
 
 ### 插件应用（独立打包，按需安装）
 
 | 文件名 | 说明 |
 |---|---|
-| `project_mgmt-1.1.0.zip` | 项目开发环境管理 |
+| `project_mgmt-1.1.1.zip` | 项目开发环境管理 |
 | `python_installer-1.17.0.zip` | Python Installer 环境管理（官方安装程序静默安装） |
 | `python_archive-1.8.0.zip` | Python 独立版本环境管理（便携版，不写注册表） |
 | `conda-1.2.7.zip` | Conda 环境安装和管理 |
-| `dbmysql-1.14.0.zip` | MySQL 数据库多实例管理 |
+| `dbmysql-1.14.1.zip` | MySQL 数据库多实例管理 |
+| `devtools-1.1.0.zip` | 开发工具管理 |
 
 直接下载插件应用进行安装或应用升级即可。
 
@@ -77,7 +86,7 @@
 
 ### 方式一：安装程序（推荐）
 
-下载 `JieEnv-win-Setup.exe`，双击运行即可完成安装。安装后可在开始菜单或桌面快捷方式启动。
+下载 `JieEnv-v1.53.0-full-setup.exe`，双击运行即可完成安装。安装后可在开始菜单或桌面快捷方式启动。
 
 安装程序会自动完成：
 - Python 运行时部署
@@ -88,7 +97,7 @@
 
 ### 方式二：便携包
 
-便携包已自带 Python 运行时和全部依赖，解压即用，不写注册表：
+下载 `JieEnv-v1.53.0-full-portable.zip`（对 exe 不放心的用户备选），解压后自行运行 `install.bat` 初始化（实际操作与安装程序一样）：
 
 ```
 1. 解压到任意目录（如 D:\JieEnv-win）
@@ -103,9 +112,9 @@
 | 项目 | 要求 |
 |---|---|
 | 操作系统 | Windows 10 / 11（64 位） |
-| 运行时 | Python 3.13.15（便携包自带） |
-| 磁盘空间 |初始安装130 MB（含便携 Python）,后期根据项目需求动态扩展 |
-| 网络 | 首次安装 Python/MySQL 镜像时需要 |
+| 运行时 | Python 3.13.15（自带） |
+| 磁盘空间 | 全量初始安装后基本程序约占 130 MB，后期根据项目需求动态扩展 |
+| 网络 | 需要连接外网，用于下载应用资源（如 Python 镜像、数据库镜像等） |
 
 ---
 

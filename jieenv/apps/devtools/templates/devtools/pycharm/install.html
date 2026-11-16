@@ -1,10 +1,34 @@
-{% extends "python_main/layout.html" %}
+{% extends "layout_main.html" %}
 {% load static %}
 
 {% block js_code %}
 <script>
 layui.use(['layer', 'jquery', 'util'], function () {
     var layer = layui.layer, $ = layui.$, util = layui.util;
+
+    {% if need_fetch %}
+    var _loadIdx = layer.msg('正在从 JetBrains 官方抓取 PyCharm 版本信息，请稍候...', {
+        icon: 16, shade: 0.3, time: 0
+    });
+    $.ajax({
+        url: '{% url "devtools:api_pycharm_version_refresh" %}',
+        type: 'POST', dataType: 'json', timeout: 5 * 60 * 1000,
+        success: function (res) {
+            layer.close(_loadIdx);
+            if (res && res.code === 0) {
+                layer.msg('抓取完成，正在跳转...', { icon: 1, time: 800 }, function () {
+                    location.href = '{% url "devtools:pycharm_versions" %}';
+                });
+            } else {
+                layer.msg((res && res.msg) || '抓取失败，请返回版本列表重试', { icon: 2 });
+            }
+        },
+        error: function () {
+            layer.close(_loadIdx);
+            layer.msg('网络请求失败，请稍后重试', { icon: 2 });
+        }
+    });
+    {% endif %}
 
     // 选择安装目录：复用 jiecore 通用目录选择器
     $(document).on('click', '#btn-install-dir-browse', function () {
@@ -41,7 +65,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                 layer.close(index);
                 // 后端登记 jiecore.tasks 后台任务（下载 + 提权静默安装）并回传 task_id，
                 // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
-                $.post('{% url "python_main:api_pycharm_install" %}', {
+                $.post('{% url "devtools:api_pycharm_install" %}', {
                     version: '{{ version }}',
                     download_url: downloadUrl,
                     install_dir: installDir
@@ -54,7 +78,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                         title: '安装 PyCharm {{ version }}',
                         taskId: res.task_id,
                         onSuccess: function () {
-                            window.location.href = "{% url 'python_main:pycharm_detail' %}";
+                            window.location.href = "{% url 'devtools:pycharm_detail' %}";
                         },
                         onFail: function (result) {
                             layer.alert((result && result.message) || '安装失败', {icon: 2, title: null});
@@ -78,12 +102,12 @@ layui.use(['layer', 'jquery', 'util'], function () {
 </script>
 {% endblock %}
 
-{% block provider_content %}
+{% block page_content %}
 <div class="card">
     <div class="card-header">
         <div class="row align-items-center">
             <div class="col-md-1">
-                <img src="{% static 'python_main/pycharm.svg' %}" style="width: 54px; height: 54px"/>
+                <img src="{% static 'devtools/pycharm.svg' %}" style="width: 54px; height: 54px"/>
             </div>
             <div class="col-md-11 layui-font-18 text-bold">安装 PyCharm {{ version }}</div>
         </div>
@@ -93,11 +117,11 @@ layui.use(['layer', 'jquery', 'util'], function () {
     <div class="card-body">
         <div class="alert alert-danger mb-0">
             未能在版本缓存中找到 <b>{{ version }}</b> 的下载地址，请返回
-            <a href="{% url 'python_main:pycharm_versions' %}" class="alert-link">版本列表</a> 重新抓取后再试。
+            <a href="{% url 'devtools:pycharm_versions' %}" class="alert-link">版本列表</a> 重新抓取后再试。
         </div>
     </div>
     <div class="card-footer">
-        <a href="{% url 'python_main:pycharm_versions' %}" class="btn btn-secondary">返回</a>
+        <a href="{% url 'devtools:pycharm_versions' %}" class="btn btn-secondary">返回</a>
     </div>
     {% else %}
     <form method="post" class="layui-form">{% csrf_token %}
@@ -166,7 +190,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
             <button type="button" class="btn btn-success" lay-on="install">
                 <i class="fa fa-download"></i> 安装
             </button>
-            <a href="{% url 'python_main:pycharm_versions' %}" class="btn btn-secondary float-right">取消</a>
+            <a href="{% url 'devtools:pycharm_versions' %}" class="btn btn-secondary float-right">取消</a>
         </div>
     </form>
     {% endif %}

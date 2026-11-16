@@ -1,4 +1,4 @@
-{% extends "python_main/layout.html" %}
+{% extends "layout_main.html" %}
 {% load static %}
 
 {% block js_code %}
@@ -11,20 +11,24 @@ layui.use(function(){
 
     util.on('lay-on', {
         uninstall: function(){
-            layer.confirm('确定要开始卸载吗？卸载程序弹出后请按提示操作。', {icon: 3, title: '卸载确认'}, function(index){
+            var cleanup = $('#opt-cleanup').is(':checked') ? '1' : '0';
+            var tip = cleanup
+                ? '确定要开始卸载吗？卸载成功后将一并清理用户配置、插件和历史记录。'
+                : '确定要开始卸载吗？卸载程序弹出后请按提示操作。';
+            layer.confirm(tip, {icon: 3, title: '卸载确认'}, function(index){
                 layer.close(index);
-                // 提权启动 PyCharm 卸载向导：后端登记 jiecore.tasks 后台任务并回传 task_id，
+                // 启动 VSCode 卸载向导：后端登记 jiecore.tasks 后台任务并回传 task_id，
                 // 前端用 JieTaskLog 弹日志窗轮询（走 jiecore 通用任务状态接口）
-                $.post('{% url "python_main:api_pycharm_uninstall" %}', {}).done(function (res) {
+                $.post('{% url "devtools:api_vscode_uninstall" %}', {cleanup: cleanup}).done(function (res) {
                     if (!res || !res.success) {
                         layer.msg((res && res.message) || '启动卸载失败', {icon: 2, time: 4000});
                         return;
                     }
                     JieTaskLog.open({
-                        title: '卸载 PyCharm',
+                        title: '卸载 VSCode',
                         taskId: res.task_id,
                         onSuccess: function () {
-                            window.location.href = "{% url 'python_main:dev_tools' %}";
+                            window.location.href = "{% url 'devtools:index' %}";
                         },
                         onFail: function (result) {
                             layer.alert((result && result.message) || '卸载失败', {icon: 2, title: null});
@@ -48,35 +52,41 @@ layui.use(function(){
 </script>
 {% endblock %}
 
-{% block provider_content %}
-{% if not pycharm %}
+{% block page_content %}
+{% if not vscode %}
 {% include 'include_messages.html' %}
 <div class="alert alert-danger">
-    没有找到 Pycharm 的安装信息~
+    没有找到 VSCode 的安装信息~
 </div>
 {% else %}
 <div class="card">
     <div class="card-header">
         <div class="row">
             <div class="col-md-1">
-    <div class="col-md-1" >
-        <img src="{% static 'python_main/pycharm.svg'%}" style="width: 54px; height: 54px"/>
-    </div>
+                <img src="{% static 'devtools/vscode.svg'%}" style="width: 54px; height: 54px"/>
             </div>
-            <div class="col-md-11 layui-font-18 text-bold">卸载 {{ pycharm.DisplayName }}</div>
+            <div class="col-md-11 layui-font-18 text-bold">卸载 {{ vscode.DisplayName }}</div>
         </div>
     </div>
 <form method="post" class="layui-form">{% csrf_token %}
     <div class="card-body">
 
-        <p class="mb-1">{{ pycharm.DisplayName }} 将从以下文件夹中卸载</p>
-        <p>{{ pycharm.InstallLocation }}</p>
-        <p class="text-danger text-bold">请确保Pycharm没有在启动状态。点击卸载将启动 Pycharm 的卸载程序~</p>
+        <p class="mb-1">{{ vscode.DisplayName }}（{{ vscode.installTypeLabel }}）将从以下文件夹中卸载</p>
+        <p>{{ vscode.InstallLocation }}</p>
+        <p class="text-danger text-bold">请确保 VSCode 没有在启动状态。点击卸载将启动 VSCode 的卸载程序~</p>
         <p class="text-primary text-bold">请根据弹出的卸载程序指引卸载~~</p>
+
+        <div class="custom-control custom-checkbox mt-3">
+            <input type="checkbox" class="custom-control-input" id="opt-cleanup" name="cleanup">
+            <label class="custom-control-label" for="opt-cleanup">卸载成功后清理用户配置</label>
+            <div class="text-muted small">
+                勾选后将在卸载完成时删除 %APPDATA%\Code 与 %USERPROFILE%\.vscode（设置、扩展等全部清除）。
+            </div>
+        </div>
     </div>
     <div class="card-footer">
-        <button type="button" href="" class="btn btn-danger" lay-on="uninstall">卸载</button>
-        <a href="{% url 'python_main:pycharm_detail' %}" class="btn btn-secondary float-right">取消</a>
+        <button type="button" class="btn btn-danger" lay-on="uninstall">卸载</button>
+        <a href="{% url 'devtools:vscode_detail' %}" class="btn btn-secondary float-right">取消</a>
     </div>
 </form>
 </div>

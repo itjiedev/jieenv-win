@@ -6,32 +6,6 @@ app_name = 'python_main'
 
 urlpatterns = [
     path('', views.IndexView.as_view(), name='index'),
-    path('dev-tools/', views.DevToolsView.as_view(), name='dev_tools'),
-    path('dev-tools/pycharm/versions/', views.PycharmVersionsView.as_view(), name='pycharm_versions'),
-    path('dev-tools/pycharm/versions/<str:main_version>/', views.PycharmVersionsView.as_view(), name='pycharm_versions_param'),
-    path('dev-tools/pycharm/refresh/', views.PycharmVersionsRefreshView.as_view(), name='pycharm_versions_refresh'),
-    path('dev-tools/pycharm/detail/', views.PycharmDetailView.as_view(), name='pycharm_detail'),
-    path('dev-tools/pycharm/uninstall/', views.PycharmUninstallView.as_view(), name="pycharm_uninstall"),
-    path('dev-tools/pycharm/PycharmInstallView/<str:version>/', views.PycharmInstallView.as_view(), name="pycharm_install"),
-    
-    path('dev-tools/api/pycharm/version/refresh/', views.api_fetch_pycharm_version, name='api_pycharm_version_refresh'),
-    path('dev-tools/api/pycharm/detail/refresh/', views.api_pycharm_info_refresh, name='api_pycharm_detail_refresh'),
-    path('dev-tools/api/pycharm/start/', views.api_start_pycharm, name='api_start_pycharm'),
-    path('dev-tools/api/pycharm/uninstall/', views.api_pycharm_uninstall, name='api_pycharm_uninstall'),
-    path('dev-tools/api/pycharm/install/', views.api_pycharm_install, name='api_pycharm_install'),
-    path('dev-tools/api/pycharm/reset/', views.api_pycharm_reset, name='api_pycharm_reset'),
-
-    # VSCode（Visual Studio Code）：无版本区分，取官方最新稳定版
-    path('dev-tools/vscode/install/', views.VscodeInstallView.as_view(), name='vscode_install'),
-    path('dev-tools/vscode/detail/', views.VscodeDetailView.as_view(), name='vscode_detail'),
-    path('dev-tools/vscode/uninstall/', views.VscodeUninstallView.as_view(), name='vscode_uninstall'),
-    path('dev-tools/api/vscode/detail/refresh/', views.api_vscode_info_refresh, name='api_vscode_detail_refresh'),
-    path('dev-tools/api/vscode/latest/refresh/', views.api_fetch_vscode_latest, name='api_vscode_latest_refresh'),
-    path('dev-tools/api/vscode/start/', views.api_start_vscode, name='api_start_vscode'),
-    path('dev-tools/api/vscode/install/', views.api_vscode_install, name='api_vscode_install'),
-    path('dev-tools/api/vscode/uninstall/', views.api_vscode_uninstall, name='api_vscode_uninstall'),
-    path('dev-tools/api/vscode/reset/', views.api_vscode_reset, name='api_vscode_reset'),
-
     path('pypi/list/', views.PypiListView.as_view(), name='pypi_list'),
     path('pypi/api/get/', views.api_pypi_get, name='api_pypi_get'),
     path('pypi/api/set/', views.api_pypi_set, name='api_pypi_set'),

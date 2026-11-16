@@ -1,0 +1,100 @@
+{% extends "layout_main.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+  var layer = layui.layer, $ = layui.$, util = layui.util;
+
+  util.on(
+      'lay-on', {
+        reDetect: function () {
+          var load = layer.load(2, {shade: 0.3, shadeClose: false});
+          $.get("{% url 'devtools:api_dbeaver_detail_refresh' %}", {}, function (res) {
+            layer.close(load);
+            if (res && (res.code === 0 || res.code === 200)) {
+              layer.msg('探测成功，正在刷新...', { icon: 1, time: 1000, shade: 0.3 }, function () {
+                location.reload();
+              });
+            } else {
+              layer.alert((res && res.msg) || '探测失败，请稍后重试', { icon: 2 });
+            }
+          }, 'json').fail(function () {
+            layer.close(load);
+            layer.alert('网络异常，探测失败', { icon: 2 });
+          });
+       },
+
+       startDbeaver: function () {
+         $.post('{% url "devtools:api_start_dbeaver" %}', {}).done(function (res) {
+           if (!res || !res.success) {
+             layer.msg((res && res.message) || '启动 DBeaver 失败', { icon: 2, time: 4000 });
+             return;
+           }
+           JieTaskLog.open({
+             title: '启动 DBeaver',
+             taskId: res.task_id,
+             onSuccess: function () {},
+             onFail: function (result) {
+               layer.msg((result && result.message) || 'DBeaver 启动失败', { icon: 2, time: 5000 });
+             }
+           });
+         }).fail(function (xhr) {
+           var msg;
+           if (!xhr || !xhr.status) {
+             msg = '无法连接后台服务，请确认服务仍在运行后重试';
+           } else if (xhr.status === 403) {
+             msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+           } else {
+             msg = '启动请求失败（HTTP ' + xhr.status + '）';
+           }
+           layer.msg(msg, { icon: 2, time: 4000 });
+         });
+       }
+  });
+});
+</script>
+{% endblock %}
+
+
+{% block page_content %}
+{% if not dbeaver %}
+<div class="text-danger text-bold text-lg">
+    没有找到 DBeaver 信息, 请先 <a href="{% url "devtools:dbeaver_versions" %}">下载安装</a>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-1">
+                <div style="width: 54px; height: 54px">
+                    <img src="{% static 'devtools/dbeaver-beaver.png' %}" style="width: 50px; height: 50px">
+                </div>
+            </div>
+            <div class="col-md-8 text-bold text-primary"><h4>{{ dbeaver.DisplayName }}</h4></div>
+            <div class="col-md-3">
+                <button class="btn btn-primary" lay-on="startDbeaver">启动 DBeaver</button>
+                <button class="btn btn-success float-right" lay-on="reDetect">重新探测</button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="text-muted">
+            <dl class="row">
+                <dt class="col-sm-2">安装模式</dt>
+                <dd class="col-sm-10">{{ dbeaver.installTypeLabel }}</dd>
+                <dt class="col-sm-2">版本</dt>
+                <dd class="col-sm-10">{{ dbeaver.DisplayVersion }}</dd>
+                <dt class="col-sm-2">安装目录</dt>
+                <dd class="col-sm-10">{{ dbeaver.InstallLocation }}</dd>
+            </dl>
+        </div>
+    </div>
+    <div class="card-footer">
+        <div class="float-right">
+            <a href="{% url 'devtools:dbeaver_uninstall' %}" class="btn btn-danger">卸载</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

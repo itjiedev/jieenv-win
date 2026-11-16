@@ -116,6 +116,22 @@ def parse_version(ver: str) -> tuple:
     return _split(ver)
 
 
+def get_all_apps() -> list:
+    """
+    动态扫描所有已安装应用（骨架 + 独立）。
+    来源：jiecore + APPS_DIR 下所有非隐藏目录（跳过 _ 开头的）。
+    用于全量升级包的钩子遍历和打包扫描。
+    """
+    result = [FRAMEWORK_APP]
+    try:
+        for child in APPS_DIR.iterdir():
+            if child.is_dir() and not child.name.startswith('_'):
+                result.append(child.name)
+    except OSError:
+        pass
+    return result
+
+
 def scan_platform_items_for_staging() -> dict:
     """
     返回平台升级包应包含的所有目录条目，映射为：
@@ -149,7 +165,41 @@ def scan_platform_items_for_staging() -> dict:
         'port_config.py',
         'requirements.txt',
         'upgrade_platform.py', '_build_helper.py',
-        'jieenv/manage.py',
+    ):
+        if (SCRIPT_DIR / fname).exists():
+            items[fname] = fname
+
+    return items
+
+
+def scan_all_apps_items_for_staging() -> dict:
+    """
+    返回全量升级包应包含的所有目录条目（骨架 + 独立应用 + 平台文件）。
+    结构同 scan_platform_items_for_staging()，但多了所有独立应用目录。
+    打包命令：_build_helper.py all_items
+    """
+    items = {}
+    all_apps = get_all_apps()
+
+    for app_name in all_apps:
+        if app_name == FRAMEWORK_APP:
+            src = 'jieenv/jiecore'
+            dst = 'jieenv/jiecore'
+        else:
+            src = f'jieenv/apps/{app_name}'
+            dst = f'jieenv/apps/{app_name}'
+        if (SCRIPT_DIR / src).exists():
+            items[dst] = src
+
+    config_src = 'jieenv/config'
+    if (SCRIPT_DIR / config_src).exists():
+        items[config_src] = config_src
+
+    for fname in (
+        'server.py', 'desktop.py',
+        'port_config.py',
+        'requirements.txt',
+        'upgrade_platform.py', '_build_helper.py',
     ):
         if (SCRIPT_DIR / fname).exists():
             items[fname] = fname
@@ -162,10 +212,25 @@ if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'version'
     if cmd == 'version':
         print(get_platform_version())
+    elif cmd == 'app_meta':
+        app_name = sys.argv[2] if len(sys.argv) > 2 else ''
+        app_dir = get_app_dir(app_name) if app_name else None
+        if app_dir:
+            meta = _read_meta_from_path(app_dir)
+            ver = meta.get('version', '0.0.0')
+            fixed = str(meta.get('is_platform_fixed', False))
+            print(f'{ver}|{fixed}')
+        else:
+            print('0.0.0|False')
     elif cmd == 'apps':
         print(','.join(get_platform_fixed_apps()))
+    elif cmd == 'all_apps':
+        print(','.join(get_all_apps()))
     elif cmd == 'items':
         for dst, src in scan_platform_items_for_staging().items():
+            print(f'{dst}|{src}')
+    elif cmd == 'all_items':
+        for dst, src in scan_all_apps_items_for_staging().items():
             print(f'{dst}|{src}')
     elif cmd == 'all':
         print(f'VERSION={get_platform_version()}')
@@ -173,4 +238,4 @@ if __name__ == '__main__':
         items = scan_platform_items_for_staging()
         print(f'ITEMS={len(items)}')
     else:
-        print(f'Unknown cmd: {cmd}. Use: version | apps | items | all')
+        print(f'Unknown cmd: {cmd}. Use: version | apps | all_apps | items | all_items | all')

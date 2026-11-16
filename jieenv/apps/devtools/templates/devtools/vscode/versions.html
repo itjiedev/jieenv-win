@@ -1,0 +1,162 @@
+{% extends "layout_main.html" %}
+
+
+{% block js_code %}
+<script>
+layui.use(function () {
+  var $ = layui.$;
+  var layer = layui.layer;
+  var util = layui.util;
+
+  {% if need_fetch %}
+  var _loadIdx = layer.msg('正在从 VSCode 官方抓取最新版本信息，请稍候...', {
+    icon: 16, shade: 0.3, time: 0
+  });
+  $.ajax({
+    url: '{% url "devtools:api_vscode_latest_refresh" %}',
+    type: 'POST', dataType: 'json', timeout: 60 * 1000,
+    success: function (res) {
+      layer.close(_loadIdx);
+      if (res && res.code === 0) {
+        layer.msg('抓取完成，正在刷新页面...', { icon: 1, time: 800 }, function () { location.reload(); });
+      } else {
+        layer.msg((res && res.msg) || '抓取失败，请稍后重试', { icon: 2 });
+      }
+    },
+    error: function () {
+      layer.close(_loadIdx);
+      layer.msg('网络请求失败，请稍后重试', { icon: 2 });
+    }
+  });
+  {% endif %}
+
+  util.on('lay-on', {
+    'btn-fetch-versions': function () {
+      var $btn = $(this);
+      if ($btn.hasClass('layui-btn-disabled')) return;
+      $btn.addClass('layui-btn-disabled');
+
+      var loadIndex = layer.msg('正在重新抓取 VSCode 最新版本，请稍候...', {
+        icon: 16, shade: 0.3, time: 0
+      });
+
+      $.ajax({
+        url: '{% url "devtools:api_vscode_latest_refresh" %}',
+        type: 'POST', dataType: 'json', timeout: 60 * 1000,
+        success: function (res) {
+          layer.close(loadIndex);
+          $btn.removeClass('layui-btn-disabled');
+          if (res && res.code === 0) {
+            layer.msg('抓取完成，正在刷新页面...', { icon: 1, time: 800 }, function () { location.reload(); });
+          } else {
+            layer.msg((res && res.msg) || '抓取失败，请稍后重试', { icon: 2 });
+          }
+        },
+        error: function (xhr, status, err) {
+          layer.close(loadIndex);
+          $btn.removeClass('layui-btn-disabled');
+          layer.msg('请求失败：' + (err || status), { icon: 2 });
+        }
+      });
+    },
+
+    'btn-download': function () {
+      var $btn = $(this);
+      var download_url = $btn.attr('download_url') || '';
+      var filename = $btn.attr('filename') || 'VSCodeSetup.exe';
+
+      var contentHtml = '<div style="padding: 25px 20px; text-align: center;">';
+      contentHtml += '<p style="margin-bottom: 15px; color: #666;">文件名：<code>' + filename + '</code></p>';
+      if (download_url) {
+        contentHtml += '<a href="' + download_url + '" target="_blank" class="layui-btn layui-btn-normal" style="min-width: 140px;">下载文件</a>';
+      } else {
+        contentHtml += '<p style="color: #999;">暂无下载链接</p>';
+      }
+      contentHtml += '</div>';
+
+      layer.open({
+        type: 1,
+        title: 'VSCode 下载',
+        area: ['420px', 'auto'],
+        shade: 0.3,
+        shadeClose: false,
+        closeBtn: 1,
+        content: contentHtml
+      });
+    }
+  });
+});
+</script>
+{% endblock %}
+
+
+{% block page_content %}
+<div class="card">
+<div class="card-header">
+    <div class="card-title">
+        <a href="https://code.visualstudio.com/Download" target="_blank" class="btn btn-outline-info btn-sm">
+            <i class="fas fa-globe"></i> VSCode 下载官网
+        </a>
+    </div>
+    <div class="card-tools">
+        {% if product_version %}
+        <span class="text-info text-bold mr-3">最新版：v{{ product_version }}</span>
+        {% endif %}
+        <span class="text-muted text-sm">本地缓存{% if fetched_at %} · 抓取于 {{ fetched_at }}{% endif %}</span>
+        <button class="btn btn-outline-primary btn-sm ml-2" lay-on="btn-fetch-versions">
+            <i class="fa fa-refresh"></i> 重新抓取
+        </button>
+    </div>
+</div>
+
+<div class="card-body">
+{% if latest_all %}
+<div class="row">
+{% for installer_type, info in latest_all.items %}
+{% if info %}
+    <div class="col-md-6 col-12 col-sm-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="m-0">
+                    <span class="text-info text-bold">{{ info.installer_label }}</span>
+                    {% if current_vscode and current_vscode.installType == installer_type %}
+                    <span class="badge badge-success ml-2">当前已安装</span>
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm table-borderless mb-0">
+                    <tr>
+                        <th style="width:110px;">版本号</th>
+                        <td>{{ info.productVersion|default:"—" }}</td>
+                    </tr>
+                    <tr>
+                        <th>文件名</th>
+                        <td><code>{{ info.filename|default:"—" }}</code></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="card-footer text-right">
+                <button type="button" class="btn btn-outline-info btn-sm"
+                        lay-on="btn-download"
+                        download_url="{{ info.url }}"
+                        filename="{{ info.filename }}">下载</button>
+                {% if not current_vscode %}
+                <a href="{% url 'devtools:vscode_install' %}?installer_type={{ installer_type }}"
+                   class="btn btn-primary btn-sm ml-1">安装</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endfor %}
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    <i class="fa fa-inbox fa-3x mb-3"></i>
+    <p>暂无版本缓存，请点击右上角"重新抓取"按钮从官网获取。</p>
+</div>
+{% endif %}
+</div>
+</div>
+{% endblock %}

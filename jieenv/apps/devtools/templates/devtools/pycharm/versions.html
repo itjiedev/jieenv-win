@@ -1,4 +1,4 @@
-{% extends "python_main/layout.html" %}
+{% extends "layout_main.html" %}
 
 
 {% block js_code %}
@@ -7,6 +7,28 @@ layui.use(function () {
   var $ = layui.$;
   var layer = layui.layer;
   var util = layui.util;
+
+  {% if need_fetch %}
+  var _loadIdx = layer.msg('正在从 JetBrains 官方抓取 PyCharm 版本信息，请稍候...', {
+    icon: 16, shade: 0.3, time: 0
+  });
+  $.ajax({
+    url: '{% url "devtools:api_pycharm_version_refresh" %}',
+    type: 'POST', dataType: 'json', timeout: 5 * 60 * 1000,
+    success: function (res) {
+      layer.close(_loadIdx);
+      if (res && res.code === 0) {
+        layer.msg('抓取完成，正在刷新页面...', { icon: 1, time: 800 }, function () { location.reload(); });
+      } else {
+        layer.msg((res && res.msg) || '抓取失败，请稍后重试', { icon: 2 });
+      }
+    },
+    error: function () {
+      layer.close(_loadIdx);
+      layer.msg('网络请求失败，请稍后重试', { icon: 2 });
+    }
+  });
+  {% endif %}
 
   util.on('lay-on', {
     // 你原本的抓取版本事件
@@ -26,7 +48,7 @@ layui.use(function () {
 
       // 后台发起抓取请求
       $.ajax({
-        url: '{% url "python_main:api_pycharm_version_refresh" %}',
+        url: '{% url "devtools:api_pycharm_version_refresh" %}',
         type: 'POST',
         dataType: 'json',
         timeout: 5 * 60 * 1000,    // 抓取耗时较长，超时设长一点
@@ -108,7 +130,7 @@ layui.use(function () {
 {% endblock %}
 
 
-{% block provider_content %}
+{% block page_content %}
 <div class="card">
 <div class="card-header">
     <div class="card-title">
@@ -126,7 +148,7 @@ layui.use(function () {
 
 <div class="card-header border-0">
     {% for version in main_versions %}
-    <a href="{% url 'python_main:pycharm_versions_param' version %}" 
+    <a href="{% url 'devtools:pycharm_versions_param' version %}" 
     class="btn btn-outline-info m-1{% if current_main_version == version %} active{% endif %}">{{ version }}</a>
     {% endfor %}
 </div>
@@ -155,7 +177,7 @@ layui.use(function () {
         community_url="{{ info.community_exe_url }}">下载
 </button>
 {% if not current_pycharm %}
-   <a href="{% url 'python_main:pycharm_install' version %}" class="btn btn-primary btn-sm">安装</a>
+   <a href="{% url 'devtools:pycharm_install' version %}" class="btn btn-primary btn-sm">安装</a>
 {% endif %}
                         </td>
                     </tr>
@@ -167,5 +189,6 @@ layui.use(function () {
 {% endfor %}
 </div>
 
+</div>
 </div>
 {% endblock %}

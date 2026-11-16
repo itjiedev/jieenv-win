@@ -52,8 +52,18 @@
         <hr>
         <h6>平台更新日志</h6>
         <div class="platform-changelog-box">
-{% if platform_changelog %}
-<pre class="text-sm" style="white-space: pre-wrap; font-size: 13px;">{{ platform_changelog }}</pre>
+{% if platform_changelog_recent %}
+{% for entry in platform_changelog_recent %}
+<pre class="text-sm mb-0 mt-1 p-1" style="white-space: pre-wrap; font-size: 13px;">{{ entry }}</pre>
+{% endfor %}
+{% if platform_changelog_more %}
+<div id="platform-changelog-more" style="display:none;">
+{% for entry in platform_changelog_more %}
+<pre class="text-sm mb-0 mt-1 p-1" style="white-space: pre-wrap; font-size: 13px;">{{ entry }}</pre>
+{% endfor %}
+</div>
+<button class="btn btn-link btn-sm p-0" onclick="var m=document.getElementById('platform-changelog-more');m.style.display=m.style.display==='none'?'block':'none';this.textContent=m.style.display==='none'?'查看更多历史更新':'收起历史更新'">查看更多历史更新</button>
+{% endif %}
 {% else %}
 <small class="text-muted">暂无平台更新日志</small>
 {% endif %}
@@ -95,7 +105,13 @@ $(document).on('click', '#btn-platform-upload', function() {
                 JieTaskLog.open({
                     title: '平台升级',
                     taskId: res.task_id,
-                    onSuccess: function () { location.reload(); }
+                    onSuccess: function (result) {
+                        if (result && result.restart_required) {
+                            JieOps.restartAndWait(window.location.href);
+                        } else {
+                            location.reload();
+                        }
+                    }
                 });
             } else {
                 layui.use('layer', function(l) { l.alert('升级失败: ' + (res.message || '未知错误'), {icon: 2}); });
@@ -129,7 +145,13 @@ $(document).on('click', '.btn-platform-zip', function() {
                 JieTaskLog.open({
                     title: '平台升级',
                     taskId: res.task_id,
-                    onSuccess: function () { location.reload(); }
+                    onSuccess: function (result) {
+                        if (result && result.restart_required) {
+                            JieOps.restartAndWait(window.location.href);
+                        } else {
+                            location.reload();
+                        }
+                    }
                 });
             } else {
                 layui.use('layer', function(l) { l.alert('升级失败: ' + (res.message || '未知错误'), {icon: 2}); });

@@ -66,6 +66,8 @@ def _init_paths(env_root: Path):
     global _PYTHON, _MANAGE_PY, _SCRIPT_DIR, _BASE_DIR
     _SCRIPT_DIR = env_root.resolve()
     _BASE_DIR = _SCRIPT_DIR / 'jieenv'
+    if str(_BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(_BASE_DIR))
     _PYTHON = _SCRIPT_DIR / 'runtime' / 'python.exe'
     _MANAGE_PY = _BASE_DIR / 'manage.py'
 
@@ -487,11 +489,17 @@ def main(zip_path_str: str, env_root_str: str = None) -> int:
         return 1
 
     stem = zip_file.stem
-    parts = stem.rsplit('-', 1)
-    if len(parts) != 2 or parts[0] != 'platform':
-        print(f'\n[ERROR] filename must be platform-<version>.zip, got: {zip_file.name}')
-        return 1
-    new_version = parts[1]
+    all_in_one = stem.endswith('-all')
+    base_stem = stem[:-4] if all_in_one else stem
+
+    if base_stem.startswith('JieEnv-upgrade-'):
+        new_version = base_stem[len('JieEnv-upgrade-'):]
+    else:
+        parts = base_stem.rsplit('-', 1)
+        if len(parts) != 2 or parts[0] != 'platform':
+            print(f'\n[ERROR] filename must be JieEnv-upgrade-<version>.zip or platform-<version>.zip, got: {zip_file.name}')
+            return 1
+        new_version = parts[1]
 
     current_version = helper.get_platform_version()
     print(f'  Current ver:  {current_version or "(unknown)"}')
@@ -546,19 +554,22 @@ def main(zip_path_str: str, env_root_str: str = None) -> int:
                     original_files[name] = set()
                 print(f'       Backup: {name}')
 
-        print('\n[3/8] Recording old fixed-app versions...')
-        fixed_apps = helper.get_platform_fixed_apps()
+        print('\n[3/8] Recording old app versions (all)...')
+        all_apps = helper.get_all_apps()
         old_versions = {}
-        for app_name in fixed_apps:
+        for app_name in all_apps:
             meta = helper._read_meta_from_path(helper.get_app_dir(app_name))
             old_versions[app_name] = meta.get('version', '0.0.0')
             print(f'       {app_name}: {old_versions[app_name]}')
 
-        print('\n[4/8] Merging files (dirs_exist_ok)...')
+        print('\n[4/8] Merging files (dirs_exist_ok, skip uninstalled dirs)...')
         for name in items_to_update:
             pkg_path = tmp_dir / name
             dest_path = _SCRIPT_DIR / name
             if pkg_path.is_dir():
+                if not dest_path.exists():
+                    print(f'       Skip (not installed): {name}')
+                    continue
                 shutil.copytree(pkg_path, dest_path, dirs_exist_ok=True, ignore=_ignore_upg)
             else:
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -588,8 +599,8 @@ def main(zip_path_str: str, env_root_str: str = None) -> int:
         print('\n[9/11] AppRegistry sync (apprescan --all --no-deps --no-migrate)...')
         _run_apprescan()
 
-        print('\n[10/11] Running upgrade.py hooks...')
-        for app_name in fixed_apps:
+        print('\n[10/11] Running upgrade.py hooks (all apps)...')
+        for app_name in all_apps:
             new_ver = helper._read_meta_from_path(helper.get_app_dir(app_name)).get('version', old_versions[app_name])
             _run_upgrade_hook(app_name, old_versions[app_name], new_ver)
 

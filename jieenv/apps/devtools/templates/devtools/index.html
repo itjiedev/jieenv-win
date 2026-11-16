@@ -1,0 +1,142 @@
+{% extends "layout_main.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+    var layer = layui.layer, $ = layui.$, util = layui.util;
+
+    util.on('lay-on', {
+        startTool: function () {
+            var url = $(this).data('api-start');
+            var label = $(this).data('tool-label') || '';
+            if (!url) {
+                layer.msg('该工具暂不支持启动', { icon: 0, time: 2000 });
+                return;
+            }
+            var loadIndex = layer.load(2, { shade: 0.2 });
+            $.post(url, {}).done(function (res) {
+                layer.close(loadIndex);
+                if (!res || !res.success) {
+                    layer.msg((res && res.message) || '启动失败', { icon: 2, time: 4000 });
+                    return;
+                }
+                layer.msg(label + ' 启动中…', { icon: 1, time: 1500 });
+                if (res.task_id && window.JieTaskLog) {
+                    JieTaskLog.open({
+                        title: '启动 ' + label,
+                        taskId: res.task_id,
+                        onSuccess: function () {},
+                        onFail: function () {}
+                    });
+                }
+            }).fail(function (xhr) {
+                layer.close(loadIndex);
+                var msg = (!xhr || !xhr.status) ? '无法连接后台服务' :
+                          (xhr.status === 403 ? 'CSRF 校验未通过' : '启动请求失败 (HTTP ' + xhr.status + ')');
+                layer.msg(msg, { icon: 2, time: 4000 });
+            });
+        }
+    });
+
+    $('#cleanupDownloadsBtn').on('click', function () {
+        layer.confirm('确定要清理所有已下载的安装文件吗？', {
+            icon: 3, title: '清理下载缓存'
+        }, function (idx) {
+            layer.close(idx);
+            var loadIndex = layer.load(2, { shade: 0.2 });
+            $.post("{% url 'devtools:api_cleanup_downloads' %}", {}).done(function (res) {
+                layer.close(loadIndex);
+                if (res && res.success) {
+                    layer.msg('已清理 ' + res.files + ' 个文件，释放 ' + res.size_mb + ' MB', { icon: 1, time: 3000 });
+                } else {
+                    layer.msg((res && res.msg) || '清理失败', { icon: 2, time: 3000 });
+                }
+            }).fail(function (xhr) {
+                layer.close(loadIndex);
+                layer.msg('清理请求失败 (HTTP ' + (xhr ? xhr.status : '?') + ')', { icon: 2, time: 3000 });
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
+
+{% block page_content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <ul class="nav nav-pills flex-wrap mb-0">
+        <li class="nav-item">
+            <a class="nav-link{% if not active_cat %} active{% endif %}" href="{% url 'devtools:index' %}">全部</a>
+        </li>
+        {% for category in categories %}
+        {% if category.has_tools %}
+        <li class="nav-item">
+            <a class="nav-link{% if active_cat == category.key %} active{% endif %}"
+               href="{% url 'devtools:index' %}?cat={{ category.key }}">{{ category.label }}</a>
+        </li>
+        {% endif %}
+        {% endfor %}
+    </ul>
+    <button id="cleanupDownloadsBtn" class="btn btn-outline-danger btn-sm" title="删除所有已下载的安装文件">
+        清理下载缓存
+    </button>
+</div>
+
+{% if display_tools %}
+<div class="row">
+    {% for tool in display_tools %}
+    <div class="col-12 col-sm-6 col-md-4 d-flex align-items-stretch flex-column">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-4 text-center">
+                        {% if tool.icon_static %}
+                        <div style="width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;">
+                            <img src="{% static tool.icon_static %}" alt="{{ tool.label }}"
+                                 style="width:60px;height:60px;object-fit:contain;" />
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-8">
+                        <h2 class="lead text-bold text-truncate" title="{{ tool.label }}">{{ tool.label }}</h2>
+                        <div class="text-muted text-sm">
+                            {% if tool.installed %}<b>已安装:</b> {{ tool.version_str }}{% else %}未安装{% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                {% if tool.installed %}
+                    {% if tool.start_url %}
+                    <button class="btn btn-primary btn-sm" lay-on="startTool"
+                            data-api-start="{{ tool.start_url }}"
+                            data-tool-label="{{ tool.label }}">启动</button>
+                    {% endif %}
+                    {% if tool.detail_url %}
+                    <a href="{{ tool.detail_url }}" class="btn btn-info btn-sm">详情</a>
+                    {% endif %}
+                {% endif %}
+
+                {% if tool.install_url %}
+                <a href="{{ tool.install_url }}" class="btn btn-success btn-sm">
+                    {% if tool.installed %}下载{% else %}安装{% endif %}
+                </a>
+                {% endif %}
+
+                {% if tool.official_url %}
+                <a href="{{ tool.official_url }}" target="_blank" class="btn btn-outline-success btn-sm float-right">官网</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center text-muted py-5">
+        <i class="fas fa-wrench fa-3x mb-3"></i>
+        <p>暂无已接入的开发工具</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

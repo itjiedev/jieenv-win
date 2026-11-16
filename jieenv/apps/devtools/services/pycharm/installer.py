@@ -8,21 +8,20 @@ from jiecore.json_storage import JsonStore
 from jiecore.system_ops import run_elevated
 from jiecore.utils import format_size
 
-from .config import (PYCHARM_INSTALLED_SOURCES_FILE, PYCHARM_DOWNLOAD_DIR,
-                     PYCHARM_SILENT_CONFIG_FILE, DEV_TOOLS_INSTALL_ROOT)
-from .pycharm_versions import BROWSER_HEADERS, get_pycharm_versions
+from apps.devtools.config import DEV_TOOLS_INSTALL_ROOT
+from apps.devtools.services.pycharm.config import (
+    PYCHARM_INSTALLED_SOURCES_FILE, PYCHARM_DOWNLOAD_DIR,
+    PYCHARM_SILENT_CONFIG_FILE,
+)
+from apps.devtools.services.pycharm.versions import BROWSER_HEADERS, get_pycharm_versions
 
 logger = logging.getLogger(__name__)
 
 
 _pycharm_store = JsonStore(PYCHARM_INSTALLED_SOURCES_FILE, default={})
 
-# 静默安装耗时较长（解压 + 写注册表 + 生成共享归档），给足超时
 _PYCHARM_INSTALL_TIMEOUT = 900
-
-# 探测远端大小的独立重试次数（HEAD 请求偶发抖动很常见）
 _PROBE_MAX_ATTEMPTS = 2
-# 下载失败最大尝试次数（含首次）
 _DOWNLOAD_MAX_ATTEMPTS = 3
 
 
@@ -31,15 +30,10 @@ class PythonPycharmError(Exception):
 
 
 def default_install_dir(version: str) -> str:
-    """根据版本号生成 PyCharm 默认安装目录"""
     return str(DEV_TOOLS_INSTALL_ROOT / f'PyCharm {version}')
 
 
 def find_version_entry(version: str) -> Optional[dict]:
-    """从版本缓存中按版本号定位下载条目，找不到返回 None。
-
-    缓存结构为 versions[mainVersion][majorVersion][version] = entry。
-    """
     if not version:
         return None
     data = get_pycharm_versions() or {}
@@ -53,7 +47,6 @@ def find_version_entry(version: str) -> Optional[dict]:
 
 
 def _probe_remote_size(url: str) -> int:
-    """通过 HEAD 探测远端文件大小，失败自动重试；最终失败返回 0。"""
     last_err = None
     for attempt in range(1, _PROBE_MAX_ATTEMPTS + 1):
         try:
@@ -73,7 +66,6 @@ def _probe_remote_size(url: str) -> int:
 
 def _download_pycharm_once(url: str, exe_path: pathlib.Path,
                            on_progress=None) -> pathlib.Path:
-    """单次下载尝试：探测大小 -> 复用或下载 -> 完整性校验。"""
     total = _probe_remote_size(url)
 
     if on_progress:
@@ -82,14 +74,11 @@ def _download_pycharm_once(url: str, exe_path: pathlib.Path,
         else:
             on_progress('未能探测到安装包大小，将直接下载（暂无进度百分比）。')
 
-    # 已下载完整则直接复用
     if exe_path.exists() and total and exe_path.stat().st_size >= total:
         if on_progress:
             on_progress(f'检测到已下载的安装包，直接复用: {exe_path}')
         return exe_path
 
-    # 关键点：只有当"明确知道本地文件不完整"或"本地无文件"时，才直接写到 exe_path；
-    # 若本地已有文件但拿不到远端大小，避免误删完整包，先下到 .part 再原子替换。
     use_temp = exe_path.exists() and not total
     target = exe_path.with_suffix(exe_path.suffix + '.part') if use_temp else exe_path
 
@@ -107,7 +96,6 @@ def _download_pycharm_once(url: str, exe_path: pathlib.Path,
     chunk_size = 1024 * 256
     try:
         with urllib.request.urlopen(req, timeout=600) as resp:
-            # HEAD 没拿到大小时，从 GET 响应头补一次
             if not total:
                 total = int(resp.headers.get('Content-Length') or 0)
                 if total and on_progress:
@@ -128,13 +116,12 @@ def _download_pycharm_once(url: str, exe_path: pathlib.Path,
             raise PythonPycharmError(f'下载不完整: {format_size(downloaded)}/{format_size(total)}')
 
         if use_temp:
-            os.replace(target, exe_path)  # 原子替换，原文件在此之前始终可用
+            os.replace(target, exe_path)
 
         if on_progress:
             on_progress(f'下载完成: {exe_path}（{format_size(downloaded)}）')
         return exe_path
     except Exception:
-        # 只清理本次产生的临时文件，绝不动 exe_path
         if use_temp and target.exists():
             try:
                 target.unlink()
@@ -144,11 +131,6 @@ def _download_pycharm_once(url: str, exe_path: pathlib.Path,
 
 
 def download_pycharm(url: str, filename: str, on_progress=None) -> pathlib.Path:
-    """下载 PyCharm 安装包到 tmp 下载目录，返回本地文件路径。
-
-    失败自动重试至多 _DOWNLOAD_MAX_ATTEMPTS 次（共 3 次尝试）；
-    全部失败则抛出 PythonPycharmError。
-    """
     PYCHARM_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     exe_path = PYCHARM_DOWNLOAD_DIR / filename
 
@@ -172,12 +154,6 @@ def download_pycharm(url: str, filename: str, on_progress=None) -> pathlib.Path:
 
 
 def run_silent_install(exe_path, install_dir: str, on_progress=None) -> int:
-    """以管理员权限静默安装 PyCharm，返回提权进程退出码。
-
-    PyCharm installer（NSIS）静默参数：/S 静默、/CONFIG 指定配置文件、
-    /D 指定安装目录。/D 必须是最后一个参数且路径不能带引号，否则会被
-    installer 当成安装目录名的一部分。
-    """
     install_dir = str(install_dir).rstrip('\\/')
     pathlib.Path(install_dir).mkdir(parents=True, exist_ok=True)
     config_file = str(PYCHARM_SILENT_CONFIG_FILE)
@@ -187,9 +163,8 @@ def run_silent_install(exe_path, install_dir: str, on_progress=None) -> int:
     params = f'/S /CONFIG="{config_file}" /D={install_dir}'
     if on_progress:
         on_progress(f'正在以管理员权限静默安装到: {install_dir}')
-        on_progress('若弹出 UAC 对话框，请点击“是”授权。')
+        on_progress('若弹出 UAC 对话框，请点击"是"授权。')
         on_progress('安装过程可能需要几分钟，请耐心等待...')
-    # show=0：静默安装本身无界面，进度由前端 JieTaskLog 日志窗展示
     return run_elevated(str(exe_path), params, _PYCHARM_INSTALL_TIMEOUT, show=0)
 
 

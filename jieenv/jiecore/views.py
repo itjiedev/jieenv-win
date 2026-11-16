@@ -751,6 +751,7 @@ class PlatformUpgradeView(AppMixin, TemplateView):
     menu_id = 'platform_upgrade'
 
     def get_context_data(self, **kwargs):
+        import re
         from .version_manager import _get_platform_version, _get_platform_changelog_text
         context = super().get_context_data(**kwargs)
         context['page_title'] = '平台升级'
@@ -758,7 +759,14 @@ class PlatformUpgradeView(AppMixin, TemplateView):
         context['upgrade_packages'] = [
             p for p in scan_upgrade_packages() if p['app_name'] == 'platform'
         ]
-        context['platform_changelog'] = _get_platform_changelog_text()
+        cl = _get_platform_changelog_text()
+        if cl:
+            entries = re.split(r'\n-{8,}\n?', cl)
+            context['platform_changelog_recent'] = entries[:5]
+            context['platform_changelog_more'] = entries[5:]
+        else:
+            context['platform_changelog_recent'] = []
+            context['platform_changelog_more'] = []
         return context
 
 

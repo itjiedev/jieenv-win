@@ -1,0 +1,224 @@
+{% extends "layout_main.html" %}
+{% load static %}
+
+{% block js_code %}
+<script>
+layui.use(['layer', 'jquery', 'util'], function () {
+    var layer = layui.layer, $ = layui.$, util = layui.util;
+
+    var $dirInput = $('#opt-install-dir');
+    var $dirHint = $('#install-dir-hint');
+
+    function appendDbeaverSuffix(path) {
+        if (!path) return path;
+        path = path.replace(/[\\\/]+$/, '');
+        var lastSep = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
+        var lastPart = lastSep >= 0 ? path.substring(lastSep + 1) : path;
+        if (lastPart.toLowerCase() !== 'dbeaver') {
+            path = path + '\\DBeaver';
+        }
+        return path;
+    }
+
+    function checkInstallDir() {
+        var path = $dirInput.val().trim();
+        if (!path) {
+            $dirHint.html('<span class="text-muted">请填写安装目录</span>');
+            return;
+        }
+        var base = '<div><span class="text-muted small">将安装到目录：</span><code style="font-size:12px;">' + path + '</code></div>';
+        $.post('{% url "devtools:api_dbeaver_check_dir" %}', {path: path}, function (res) {
+            if (!res || !res.success) {
+                $dirHint.html(base);
+                return;
+            }
+            if (res.level === 'info' || res.level === 'ok') {
+                $dirHint.html(base);
+                return;
+            }
+            var colorMap = {warn: 'text-warning', error: 'text-danger'};
+            var cls = colorMap[res.level] || 'text-muted';
+            $dirHint.html(base + '<div class="' + cls + '" style="font-size:12px; margin-top:2px;">' + res.message + '</div>');
+        });
+    }
+
+    $('#btn-install-dir-browse').on('click', function () {
+        JieDirPicker.open({
+            title: '选择 DBeaver 安装目录',
+            initialPath: $dirInput.val().trim(),
+            onSelect: function (path) {
+                var finalPath = appendDbeaverSuffix(path);
+                $dirInput.val(finalPath);
+                checkInstallDir();
+            }
+        });
+    });
+
+    $dirInput.on('input change', function () {
+        checkInstallDir();
+    });
+
+    util.on('lay-on', {
+        install: function () {
+            var installDir = $('#opt-install-dir').val().trim();
+            if (!installDir) {
+                layer.msg('请填写安装目录', {icon: 2, time: 3000});
+                return;
+            }
+            var installerType = $('input[name="dbeaver_installer"]:checked').val() || 'exe';
+            var installerLabel = $('input[name="dbeaver_installer"]:checked').attr('data-label') || installerType;
+            var productVersion = $('input[name="dbeaver_installer"]:checked').attr('data-version') || '最新版';
+            var supportsUpdate = $('input[name="dbeaver_installer"]:checked').attr('data-supports-update') === 'true';
+            var mirrorKey = $('#dbeaver-mirror-select').val() || '';
+            var mirrorLabel = $('#dbeaver-mirror-select option:selected').text();
+
+            var updateMsg = supportsUpdate ? '（支持自动更新）' : '（不支持自动更新，后续升级需手动下载替换）';
+
+            layer.confirm(
+                '即将下载并静默安装 <b>DBeaver Community ' + productVersion + '</b>' +
+                '（' + installerLabel + updateMsg + '）到：<br>' +
+                '<span class="text-primary">' + installDir + '</span><br>' +
+                (mirrorLabel ? '<span class="text-muted small">下载源：' + mirrorLabel + '</span><br>' : '') +
+                (installerType === 'exe' ? '安装时可能会申请管理员权限（UAC），安装时请勿关闭界面！' : '便携版将直接解压到目标目录，无需管理员权限。') + '<br>' +
+                '安装即表示同意官方许可条款，确定继续吗？',
+                {icon: 3, title: '确认安装'}, function (index) {
+                layer.close(index);
+                $.post('{% url "devtools:api_dbeaver_install" %}', {
+                    installer_type: installerType,
+                    install_dir: installDir,
+                    mirror_key: mirrorKey
+                }).done(function (res) {
+                    if (!res || !res.success) {
+                        layer.msg((res && res.message) || '启动安装失败', {icon: 2, time: 4000});
+                        return;
+                    }
+                    JieTaskLog.open({
+                        title: '安装 DBeaver',
+                        taskId: res.task_id,
+                        onSuccess: function () {
+                            window.location.href = "{% url 'devtools:dbeaver_detail' %}";
+                        },
+                        onFail: function (result) {
+                            layer.alert((result && result.message) || '安装失败', {icon: 2, title: null});
+                        }
+                    });
+                }).fail(function (xhr) {
+                    var msg;
+                    if (!xhr || !xhr.status) {
+                        msg = '无法连接后台服务，请确认服务仍在运行后重试';
+                    } else if (xhr.status === 403) {
+                        msg = '请求被拒绝（CSRF 校验未通过），请刷新页面后重试';
+                    } else {
+                        msg = '安装请求失败（HTTP ' + xhr.status + '）';
+                    }
+                    layer.alert(msg, {icon: 2, title: null});
+                });
+            });
+        }
+    });
+});
+</script>
+{% endblock %}
+
+{% block page_content %}
+<div class="card">
+    <div class="card-header">
+        <div class="row align-items-center">
+            <div class="col-md-1">
+                <img src="{% static 'devtools/dbeaver-beaver.png' %}" style="width: 54px; height: 54px"/>
+            </div>
+            <div class="col-md-11 layui-font-18 text-bold">安装 DBeaver Community</div>
+        </div>
+    </div>
+
+    <form method="post" class="layui-form">{% csrf_token %}
+        <div class="card-body">
+            {% if latest_error %}
+            <div class="alert alert-danger">
+                获取 DBeaver 最新版信息失败：{{ latest_error }}<br>
+                请检查网络后 <a href="{% url 'devtools:dbeaver_install' %}" class="alert-link">重试</a>。
+            </div>
+            {% endif %}
+
+            {% if dbeaver %}
+            <div class="alert alert-warning">
+                检测到本机已安装 <b>{{ dbeaver.DisplayName }}</b>（{{ dbeaver.InstallLocation }}）。
+                继续安装可能会覆盖或共存，请谨慎操作。
+            </div>
+            {% endif %}
+
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">版本</label>
+                <div class="col-sm-9 text-bold">{% if latest.exe %}{{ latest.exe.productVersion }}{% elif latest.zip %}{{ latest.zip.productVersion }}{% endif %}</div>
+                <label class="col-sm-3 col-form-label">安装类型</label>
+                <div class="col-sm-9">
+                    <div class="custom-control custom-radio">
+                        <input type="radio" id="dbeaver-installer-exe"
+                               name="dbeaver_installer" value="exe"
+                               {% if selected_installer_type == 'exe' %}checked{% endif %}
+                               data-label="{{ installer_labels.exe }}"
+                               data-version="{% if latest.exe %}{{ latest.exe.productVersion }}{% endif %}"
+                               data-supports-update="true"
+                        >
+                        <label for="dbeaver-installer-exe">{{ installer_labels.exe }}</label>
+                        <div class="text-muted small">安装器，支持自动更新，安装时需管理员权限（UAC）。</div>
+                    </div>
+                    <div class="custom-control custom-radio mt-2">
+                        <input type="radio" id="dbeaver-installer-zip"
+                               name="dbeaver_installer" value="zip"
+                               {% if selected_installer_type == 'zip' %}checked{% endif %}
+                               data-label="{{ installer_labels.zip }}"
+                               data-version="{% if latest.zip %}{{ latest.zip.productVersion }}{% endif %}"
+                               data-supports-update="false"
+                        >
+                        <label for="dbeaver-installer-zip">{{ installer_labels.zip }}</label>
+                        <div class="text-muted small">便携版，解压即用无需安装；但不支持自动更新，升级需手动下载替换。</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">下载源</label>
+                <div class="col-sm-9">
+                    {% if latest.exe.mirrors %}
+                    <select class="form-control form-control-sm" id="dbeaver-mirror-select" name="dbeaver_mirror">
+                        {% for m in latest.exe.mirrors %}
+                        <option value="{{ m.key }}" data-url="{{ m.url }}">{{ m.label }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <div class="text-muted small">暂无可用下载源，请先抓取最新版本</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-group row">
+                <label class="col-sm-3 col-form-label">安装目录</label>
+                <div class="col-sm-9">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="opt-install-dir"
+                               value="{{ default_install_dir }}">
+                        <div class="input-group-append">
+                            <button type="button" class="btn btn-outline-secondary" id="btn-install-dir-browse">
+                                <i class="fa fa-folder-open"></i> 浏览
+                            </button>
+                        </div>
+                    </div>
+                    <div id="install-dir-hint" style="margin-top: 4px;"></div>
+                    <small class="form-text text-muted">exe 版静默安装到此目录；zip 版解压到此目录（仅支持 Windows x64）</small>
+                </div>
+            </div>
+<div class="alert alert-info py-2 small mb-0" role="alert">
+    <i class="fa fa-info-circle"></i>
+    JieEnv 仅在本机自动从官方源下载并静默安装原版软件，不提供任何许可证或激活服务。安装即表示您已知晓并同意该软件的官方许可条款，具体授权规则以官方说明为准。
+</div>
+        </div>
+        <div class="card-footer">
+            <button type="button" class="btn btn-success" lay-on="install">
+                <i class="fa fa-download"></i> 安装
+            </button>
+            <a href="{% url 'devtools:index' %}" class="btn btn-secondary float-right">取消</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

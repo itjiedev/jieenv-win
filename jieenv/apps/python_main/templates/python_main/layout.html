@@ -4,18 +4,6 @@
 <div class="card-header d-flex align-items-center p-0 mb-2 border-0">
         <div class="mr-auto"></div>
         <div>
-            {% if dev_tools_tabs %}
-                {% for dt in dev_tools_tabs %}
-                <a class="btn btn-outline-secondary" href="{{ dt.content_url }}">
-                    {% if dt.icon %}<i class="fa {{ dt.icon }}"></i> {% endif %}{{ dt.label }}
-                </a>
-                {% endfor %}
-            {% else %}
-                <a class="btn {% if dev_tools_is_current %}btn-info{% else %}btn-outline-info{% endif %} btn-sm"
-                   href="{% url 'python_main:dev_tools' %}">
-                    <i class="fa fa-wrench"></i> 开发工具
-                </a>
-            {% endif %}
         <a href="{% url 'python_main:pypi_list' %}"
            class="btn btn-outline-info btn-sm{% if current_content_name == 'python_pypi' %} active{% endif %}">
             <i class="fas fa-cog"></i> 全局PyPi源

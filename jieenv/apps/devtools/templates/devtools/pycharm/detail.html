@@ -1,4 +1,4 @@
-{% extends "python_main/layout.html" %}
+{% extends "layout_main.html" %}
 {% load static %}
 
 {% block js_code %}
@@ -11,7 +11,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
       'lay-on', {
         reDetect: function () {
           var load = layer.load(2, {shade: 0.3, shadeClose: false});
-          $.get("{% url 'python_main:api_pycharm_detail_refresh' %}", {}, function (res) {
+          $.get("{% url 'devtools:api_pycharm_detail_refresh' %}", {}, function (res) {
             layer.close(load);
             if (res && (res.code === 0 || res.code === 200)) {
               layer.msg('探测成功，正在刷新…', { icon: 1, time: 1000,shade: 0.3 }, function () {
@@ -33,7 +33,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                 function (index) {
               layer.close(index);
               var load = layer.load(2, {shade: 0.3, shadeClose: false});
-              $.get('{% url "python_main:api_pycharm_reset" %}', {}, function (res) {
+              $.get('{% url "devtools:api_pycharm_reset" %}', {}, function (res) {
                     layer.close(load);
                     if (res && (res.code === 0 || res.code === 200)) {
                       layer.alert(res.msg, { icon: 1,shade: 0.3 });
@@ -53,10 +53,10 @@ layui.use(['layer', 'jquery', 'util'], function () {
 {% endblock %}
 
 
-{% block provider_content %}
+{% block page_content %}
 {% if not pycharm %}
 <div class="text-danger text-bold text-lg">
-    没有找到Pycharm信息, 请先 <a href="{% url "python_main:dev_tools" %}">下载安装</a>
+    没有找到Pycharm信息, 请先 <a href="{% url "devtools:dev_tools" %}">下载安装</a>
 </div>
 {% else %}
 <div class="card">
@@ -64,7 +64,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
         <div class="row align-items-center">
             <div class="col-md-1">
                 <div style="width: 54px; height: 54px">
-<img src="{% static 'python_main/pycharm.svg' %}" style="width: 50px; height: 50px">
+<img src="{% static 'devtools/pycharm.svg' %}" style="width: 50px; height: 50px">
                 </div>
             </div>
             <div class="col-md-9 text-bold text-primary"><h4>{{ pycharm.DisplayName }}</h4></div>
@@ -98,7 +98,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
             <button class="btn btn-warning" lay-on="resetDefault">重置设置</button>
         </div>
         <div class="float-right">
-            <a href="{% url 'python_main:pycharm_uninstall' %}" class="btn btn-danger">卸载</a>
+            <a href="{% url 'devtools:pycharm_uninstall' %}" class="btn btn-danger">卸载</a>
         </div>
     </div>
 </div>
