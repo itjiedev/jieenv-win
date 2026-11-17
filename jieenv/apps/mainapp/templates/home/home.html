@@ -51,6 +51,8 @@
     font-weight: 600; font-size: .88rem; color: #343a40;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  a.rp-name { color: #343a40; text-decoration: none; }
+  a.rp-name:hover { color: #007bff; text-decoration: underline; }
   .rp-meta { flex: 1; min-width: 0; font-size: .82rem; color: #6c757d; }
   .rp-meta span { margin-right: 10px; }
   .rp-meta .rp-providers { color: #495057; }
@@ -117,7 +119,8 @@
 {% block page_content %}
 <span style="display:none">{% csrf_token %}</span>
 
-{# ── 项目概览 ── #}
+{# ── 项目概览（仅当 project_mgmt 应用已安装时显示） ── #}
+{% if project_mgmt_enabled %}
 <div class="projects-overview">
   <div class="projects-overview-title">
     <i class="fa-solid fa-diagram-project"></i> 项目概览
@@ -136,6 +139,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 {# ── 环境总览（异步加载，分类与行字段均由钩子数据驱动） ── #}
 <div id="env-sections">
@@ -200,26 +204,16 @@
 
 {% block js_code %}
 <script>
-// ── 异步加载项目概览 ──
+// ── 异步加载项目概览（仅当 project_mgmt 应用已安装时执行） ──
+{% if project_mgmt_enabled %}
 (function() {
   var apiUrl = '{% url "mainapp:api_home_projects_stats" %}';
-
-  function healthBadge(state) {
-    var map = {
-      'OK': ['badge badge-success', '正常'],
-      'DEGRADED': ['badge badge-warning', '异常'],
-      'MISSING': ['badge badge-danger', '缺失'],
-    };
-    var m = map[state] || ['badge badge-secondary', state || '未知'];
-    return '<span class="' + m[0] + '">' + m[1] + '</span>';
-  }
 
   function render(data) {
     var total = data.total || 0;
     var ok = data.ok || 0;
     var degraded = data.degraded || 0;
     var missing = data.missing || 0;
-    var recent = data.recent || [];
 
     var html = '';
     html += '<div class="stat-cards">';
@@ -228,27 +222,6 @@
     html +=   '<div class="stat-card stat-degraded"><div class="stat-num">' + degraded + '</div><div class="stat-label">异常</div></div>';
     html +=   '<div class="stat-card stat-missing"><div class="stat-num">' + missing + '</div><div class="stat-label">缺失组件</div></div>';
     html += '</div>';
-
-    if (total === 0) {
-      html += '<div class="rp-empty"><i class="fa-solid fa-circle-info"></i> 暂无项目，点击右上角"新建项目"开始。</div>';
-    } else {
-      html += '<div class="recent-projects">';
-      if (recent.length === 0) {
-        html += '<div class="rp-empty">暂无项目记录。</div>';
-      } else {
-        recent.forEach(function(p) {
-          html += '<div class="rp-row">';
-          html +=   '<div class="rp-name" title="' + p.name + '">' + (p.name || '(未命名)') + '</div>';
-          html +=   '<div class="rp-meta">';
-          html +=     '<span title="' + (p.project_dir || '') + '">' + (p.project_dir || '-') + '</span>';
-          html +=   '</div>';
-          html +=   '<div class="rp-health">' + healthBadge(p.health) + '</div>';
-          html +=   '<div class="rp-time">' + (p.created_at || '') + '</div>';
-          html += '</div>';
-        });
-      }
-      html += '</div>';
-    }
     return html;
   }
 
@@ -263,6 +236,7 @@
         '<div class="rp-empty"><i class="fa-solid fa-exclamation-triangle text-warning"></i> 加载失败</div>';
     });
 })();
+{% endif %}
 
 // 操作日志详情弹窗（通过 API 查询详情内容）
 var _opDetailUrlTpl = '{% url "jiecore:api_op_log_detail" log_id=0 %}';

@@ -1,9 +1,20 @@
+v1.53.1
+- mainapp v1.3.7：项目概览增加 project_mgmt_enabled 守卫，未安装项目管理应用时不渲染；取消项目列表，仅保留 4 个统计方块
+----------------------------------------
 v1.53.0
 - 新增 devtools v1.1.0：开发工具统一管理平台（PyCharm + VSCode）
 - python_main v1.22.0：移除开发工具功能（已迁移到 devtools）
 - jiecore v1.40.0：pip extras 语法支持（psycopg[binary] 等）
 - changelog 显示优化：appmanage 应用详情页 + jiecore 平台升级页，统一按分隔线切分，默认显示最近 5 条，历史版本折叠隐藏
 - CHANGELOG.txt 分隔线规范统一：40 个连字符
+- 新增全量守卫升级包：JieEnv-upgrade-{VER}.exe，升级时自动更新所有已安装应用，未安装跳过
+- 修复 --upgrade SFX 硬编码 zip 文件名导致找不到升级包（_gen_upgrade_sfx_config.py 新增 zip_filename 参数）
+- 修复 upgrade_platform.py 执行 upgrade.py hook 时 ModuleNotFoundError: No module named 'jiecore'（补 sys.path 加入 jieenv 目录）
+- upgrade 包瘦身：去掉 manage.py + config/security.py（已安装用户不需要重复覆盖）
+- build_app.bat 新增 --all 一键打包所有业务应用（自动跳过骨架应用，不硬编码列表）
+- devtools DBeaver 下载窗口取消遮罩关闭
+- build_platform.bat 移除 --upgrade-zip / --platform-upgrade-zip 参数，清理 pu_sfx 死代码，修正 jieenvmain.db 路径
+- mainapp v1.3.7：项目概览增加 project_mgmt_enabled 守卫，未安装项目管理应用时不渲染；取消项目列表，仅保留 4 个统计方块
 ---------------------------------------
 v1.52.0
 - jiecore v1.39.0：jiecore_tasklog.js onSuccess 回调修复，接收 task result 参数，

@@ -14,31 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def api_home_projects_stats(request):
-    """首页项目概览 API：统计分布 + 最近创建项目（最多 5 个）。
+    """首页项目概览 API：统计分布（total / ok / degraded / missing）。
 
-    返回格式：
-    {
-        'total': 12,
-        'ok': 9,
-        'degraded': 2,
-        'missing': 1,
-        'recent': [
-            {
-                'id': 'abc123',
-                'name': '电商平台',
-                'template': 'python_main',
-                'health': 'OK',
-                'created_at': '2026-10-22 14:30:00',
-            },
-            ...
-        ]
-    }
+    每个项目只做一次 binding_health 探测，不再计算 recent。
     """
     try:
         from jieenv.apps.project_mgmt import storage as proj_storage
         from jieenv.apps.project_mgmt import binding_health as proj_health
     except ImportError:
-        return JsonResponse({'total': 0, 'ok': 0, 'degraded': 0, 'missing': 0, 'recent': []})
+        return JsonResponse({'total': 0, 'ok': 0, 'degraded': 0, 'missing': 0})
 
     projects = proj_storage.list_projects()
     total = len(projects)
@@ -53,28 +37,11 @@ def api_home_projects_stats(request):
         elif state == proj_health.STATE_MISSING:
             missing += 1
 
-    recent_sorted = sorted(
-        projects,
-        key=lambda p: p.get('created_at', ''),
-        reverse=True,
-    )[:5]
-    recent = []
-    for p in recent_sorted:
-        h = proj_health.check_binding_health(p)
-        recent.append({
-            'id': p.get('id', ''),
-            'name': p.get('name', ''),
-            'project_dir': p.get('project_dir', ''),
-            'health': h.get('overall', proj_health.STATE_OK),
-            'created_at': p.get('created_at', ''),
-        })
-
     return JsonResponse({
         'total': total,
         'ok': ok,
         'degraded': degraded,
         'missing': missing,
-        'recent': recent,
     })
 
 
