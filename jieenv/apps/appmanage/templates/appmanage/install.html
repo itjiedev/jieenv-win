@@ -96,7 +96,13 @@ function bindInstallForm($form) {
                     JieTaskLog.open({
                         title: '安装应用',
                         taskId: res.task_id,
-                        onSuccess: function () { window.location.href = redirect; }
+                        onSuccess: function (result) {
+                            if (result && result.restart_required) {
+                                JieOps.restartAndWait();
+                            } else {
+                                window.location.href = redirect;
+                            }
+                        }
                     });
                 } else {
                     layer.msg((res && res.message) || '安装失败', {icon: 2, time: 4000});

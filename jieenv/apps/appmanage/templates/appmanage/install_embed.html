@@ -74,11 +74,15 @@ function bindEmbedInstallForm($form) {
                     JieTaskLog.open({
                         title: '安装应用',
                         taskId: res.task_id,
-                        onSuccess: function () {
-                            if (parent && parent.layui && parent.layui.layer) {
-                                parent.layui.layer.closeAll('iframe');
+                        onSuccess: function (result) {
+                            if (result && result.restart_required) {
+                                JieOps.restartAndWait();
+                            } else {
+                                if (parent && parent.layui && parent.layui.layer) {
+                                    parent.layui.layer.closeAll('iframe');
+                                }
+                                {% if next %}parent.location.href = '{{ next }}';{% endif %}
                             }
-                            {% if next %}parent.location.href = '{{ next }}';{% endif %}
                         }
                     });
                 } else {

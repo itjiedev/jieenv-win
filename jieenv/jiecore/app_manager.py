@@ -486,7 +486,7 @@ class AppManager:
             _cb('热加载应用到 Django...', progress=80, stage='热加载')
             from .hot_reload import activate_app
             pip_installed = pip_result['installed']
-            restart_required = not activate_app(app_name) or bool(pip_installed)
+            restart_required = True
             _cb('热加载完成', progress=85)
 
             _cb('刷新菜单缓存...', progress=90, stage='刷新缓存')
@@ -633,7 +633,7 @@ class AppManager:
             _cb('热加载应用到 Django...', progress=85, stage='热加载')
             from .hot_reload import activate_app
             pip_installed = pip_result['installed']
-            restart_required = not activate_app(app_name) or bool(pip_installed)
+            restart_required = True
             _cb('热加载完成', progress=90)
 
             # 刷新菜单缓存
@@ -982,6 +982,13 @@ class AppManager:
             result['message'] = f'应用 {app_name} 的 app_meta.py 读取失败或缺少 meta 字典'
             return result
 
+        # is_platform_fixed 是运行时属性（不存 AppRegistry），靠 _PLATFORM_FIXED_CACHE 按 mtime 缓存。
+        # apprescan 跑在独立进程里，它读对了磁盘值但不会同步 Web 进程的缓存，
+        # 故在此显式清掉当前进程的缓存项；Web 进程需重启才会生效。
+        # 清缓存前先记住旧值，用于 changes diff 输出。
+        old_platform_fixed = is_platform_fixed_app(app_name)
+        _PLATFORM_FIXED_CACHE.pop(app_name, None)
+
         # 框架内核不入注册表（版本只从磁盘 app_meta 读取），其余按注册表现状判断新增/更新
         is_framework = is_framework_app(app_name)
         old_info = {} if is_framework else AppManager.get_app(app_name)
@@ -1088,6 +1095,13 @@ class AppManager:
         else:
             changes = {f: (old_info.get(f), v)
                        for f, v in target.items() if old_info.get(f) != v}
+
+        # is_platform_fixed 不存 AppRegistry，但属于用户关心的变更（改了它后应用在
+        # 应用管理列表里会显示/消失、禁用/卸载按钮会变可点），故追加到 diff 输出里
+        new_platform_fixed = bool(meta.get('is_platform_fixed', False))
+        if old_platform_fixed != new_platform_fixed:
+            changes['is_platform_fixed'] = (old_platform_fixed, new_platform_fixed)
+
         result['changes'] = changes
 
         # 4. 注册信息落库与缓存刷新（框架内核不持久化，跳过）
@@ -1342,6 +1356,16 @@ def run_migrations(app_name: str, progress_cb=None) -> bool:
             return False
         app_config = django_apps.get_app_config(app_name)
         app_label = app_config.label
+
+        # 无 migrations 目录说明该应用不涉及数据库表（如 project_mgmt、mainapp 等），
+        # 直接视为迁移成功。否则 Django migrate 会抛 "does not have migrations"。
+        from pathlib import Path as _Path
+        if not (_Path(app_config.path) / 'migrations').is_dir():
+            if progress_cb:
+                progress_cb(f'应用 {app_name} 无迁移目录，跳过', stage='迁移跳过')
+            logger.debug('应用 %s 无迁移目录，跳过 migrate', app_name)
+            return True
+
         if progress_cb:
             progress_cb(f'开始数据库迁移: {app_name} (label={app_label})', stage='数据库迁移')
         t0 = time.time()

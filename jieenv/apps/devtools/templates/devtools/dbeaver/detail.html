@@ -50,6 +50,27 @@ layui.use(['layer', 'jquery', 'util'], function () {
            }
            layer.msg(msg, { icon: 2, time: 4000 });
          });
+       },
+
+       resetDefault: function () {
+         layer.confirm(
+             '将删除 DBeaver 用户数据目录 <code>%APPDATA%\\DBeaverData</code><br>包含所有连接记录、配置、脚本、驱动缓存，<b>操作不可恢复</b>！<br><br>确定要清理配置数据吗？',
+             { title: '清理配置数据', icon: 3 },
+             function (index) {
+               layer.close(index);
+               var load = layer.load(2, {shade: 0.3, shadeClose: false});
+               $.post('{% url "devtools:api_dbeaver_reset" %}', {}, function (res) {
+                 layer.close(load);
+                 if (res && res.code === 0) {
+                   layer.alert(res.msg, { icon: 1, shade: 0.3 });
+                 } else {
+                   layer.alert((res && res.msg) || '清理失败，请稍后重试', { icon: 2, shade: 0.3 });
+                 }
+               }, 'json').fail(function () {
+                 layer.close(load);
+                 layer.alert('网络异常，清理失败', { icon: 2 });
+               });
+             });
        }
   });
 });
@@ -91,6 +112,9 @@ layui.use(['layer', 'jquery', 'util'], function () {
         </div>
     </div>
     <div class="card-footer">
+        <div class="float-left">
+            <button class="btn btn-warning" lay-on="resetDefault">清理配置数据</button>
+        </div>
         <div class="float-right">
             <a href="{% url 'devtools:dbeaver_uninstall' %}" class="btn btn-danger">卸载</a>
         </div>

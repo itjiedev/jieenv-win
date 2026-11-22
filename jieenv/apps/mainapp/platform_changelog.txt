@@ -1,4 +1,10 @@
+v1.54.0
+- devtools v1.2.0：DBeaver 砍掉 zip 便携版，仅保留 exe 安装程序；新增卸载时可选清理用户数据（purge_data）；新增详情页"清理配置数据"按钮恢复默认设置；修复 install.html JS 语法错误
+- 修复安装后随机端口不生效：refreshport.bat LF→CRLF 行尾修复（Windows cmd 解析 bat 必须 CRLF，纯 LF 导致脚本静默失败）
+- 修复 platform_install 包缺 manage.py：_build_helper.py scan_platform_items_for_staging 加回 jieenv/manage.py（r263 升级包瘦身时误删）
+----------------------------------------
 v1.53.1
+- build_platform.bat 移除 --upgrade-zip / --platform-upgrade-zip 参数，清理 pu_sfx 死代码，修正 jieenvmain.db 路径
 - mainapp v1.3.7：项目概览增加 project_mgmt_enabled 守卫，未安装项目管理应用时不渲染；取消项目列表，仅保留 4 个统计方块
 ----------------------------------------
 v1.53.0

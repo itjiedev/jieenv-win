@@ -44,10 +44,9 @@ DBEAVER_MIRRORS = [
     },
 ]
 
-INSTALLER_TYPES = ('exe', 'zip')
+INSTALLER_TYPES = ('exe',)
 INSTALLER_LABELS = {
     'exe': 'Installer（安装版）',
-    'zip': 'Archive（便携版）',
 }
 
 USER_AGENT = 'curl/8.0.1'
@@ -67,11 +66,10 @@ class DBeaverError(Exception):
     pass
 
 
-def _build_mirrors(version: str, installer_type: str) -> list[dict]:
-    suffix = 'exe' if installer_type == 'exe' else 'zip'
+def _build_mirrors(version: str) -> list[dict]:
     list_m = []
     for m in DBEAVER_MIRRORS:
-        url = m['template'].format(version=version, suffix=suffix) if '{version}' in m['template'] else m['template'].format(suffix=suffix)
+        url = m['template'].format(version=version, suffix='exe') if '{version}' in m['template'] else m['template'].format(suffix='exe')
         list_m.append({'key': m['key'], 'label': m['label'], 'url': url})
     return list_m
 
@@ -85,21 +83,19 @@ def _parse_version_from_page(html: str) -> str:
 
 
 def _build_result(version: str) -> dict:
-    result = {}
-    for it in INSTALLER_TYPES:
-        suffix = 'exe' if it == 'exe' else 'zip'
-        mirrors = _build_mirrors(version, it)
-        result[it] = {
-            'installer_type': it,
-            'installer_label': INSTALLER_LABELS.get(it, it),
+    mirrors = _build_mirrors(version)
+    return {
+        'exe': {
+            'installer_type': 'exe',
+            'installer_label': INSTALLER_LABELS['exe'],
             'productVersion': version,
             'mirrors': mirrors,
             'url': mirrors[0]['url'],
-            'filename': f'dbeaver-ce-{version}-windows-x86_64.{suffix}',
-            'supports_update': (it == 'exe'),
+            'filename': f'dbeaver-ce-{version}-windows-x86_64.exe',
+            'supports_update': True,
             'fetched_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         }
-    return result
+    }
 
 
 def _fetch_from_github() -> dict:
@@ -290,33 +286,6 @@ def run_silent_install_exe(exe_path: pathlib.Path, install_dir: str, on_progress
     return code if code is not None else -1
 
 
-def run_extract_zip(zip_path: pathlib.Path, install_dir: str, on_progress=None) -> None:
-    install_dir = str(install_dir).rstrip('\\/')
-    target = pathlib.Path(install_dir)
-    if target.exists():
-        if any(target.iterdir()):
-            raise DBeaverError(f'安装目录已存在且非空: {install_dir}')
-    else:
-        target.mkdir(parents=True, exist_ok=True)
-
-    if on_progress:
-        on_progress(f'正在解压便携版到: {install_dir}')
-    shutil.unpack_archive(str(zip_path), install_dir, 'zip')
-
-    inner = list(target.iterdir())
-    if len(inner) == 1 and inner[0].is_dir():
-        inner_dir = inner[0]
-        for item in inner_dir.iterdir():
-            item.rename(target / item.name)
-        try:
-            inner_dir.rmdir()
-        except OSError:
-            pass
-
-    if on_progress:
-        on_progress('解压完成')
-
-
 def _find_dbeaver_exe(install_dir: str):
     base = pathlib.Path(install_dir)
     candidates = [
@@ -389,18 +358,6 @@ def dbeaver_detect_installed():
         if dbeaver:
             break
 
-    if not dbeaver:
-        cache = _dbeaver_store.read() or {}
-        stored_dir = cache.get('InstallLocation') if cache else ''
-        if stored_dir and os.path.exists(stored_dir):
-            exe = _find_dbeaver_exe(stored_dir)
-            if exe:
-                dbeaver = cache
-                dbeaver['installType'] = 'zip'
-                dbeaver['installTypeLabel'] = INSTALLER_LABELS['zip']
-                dbeaver['supportsUpdate'] = False
-                dbeaver['InstallLocation'] = stored_dir
-
     if dbeaver:
         logger.info("找到 DBeaver 安装信息: %s", dbeaver.get("DisplayName", dbeaver.get("InstallLocation")))
         _dbeaver_store.write(dbeaver)
@@ -417,23 +374,6 @@ def get_dbeaver_options(refresh: bool = False):
         dbeaver_detect_installed()
         cache = _dbeaver_store.read()
     return cache
-
-
-def _register_zip_install(install_dir: str, version: str = ''):
-    install_dir = str(install_dir).rstrip('\\/')
-    info = {
-        'installType': 'zip',
-        'installTypeLabel': INSTALLER_LABELS['zip'],
-        'supportsUpdate': False,
-        'version': version,
-        'DisplayName': f'DBeaver Community {version} (portable)' if version else 'DBeaver Community (portable)',
-        'DisplayVersion': version,
-        'InstallLocation': install_dir,
-        'UninstallString': '',
-        'QuietUninstallString': '',
-    }
-    _dbeaver_store.write(info)
-    return info
 
 
 def _unregister_install():

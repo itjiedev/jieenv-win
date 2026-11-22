@@ -17,8 +17,13 @@
  *         JieTaskLog.open({
  *             title: '执行任务',                          // 弹窗标题
  *             taskId: res.task_id,                        // 任务 ID
- *             onSuccess: function () {                    // 可选，任务成功回调
- *                 setTimeout(function () { window.location.reload(); }, 300);
+ *             onSuccess: function (result) {              // 可选，任务成功回调，参数为任务结果对象
+ *                 // result 包含 {success, message, restart_required} 等字段
+ *                 if (result && result.restart_required) {
+ *                     JieOps.restartAndWait(redirect);    // 需要重启时等待服务恢复
+ *                 } else {
+ *                     setTimeout(function () { window.location.href = redirect; }, 300);
+ *                 }
  *             },
  *             onFail: function (result) {                 // 可选，任务失败回调
  *                 console.log('失败原因', result && result.message);
@@ -162,8 +167,11 @@
                     } else if (s.status === 'success') {
                         finish(true, '执行成功');
                         if (onSuccess) {
-                            // 有回调时显示“确定”按钮，点击后执行回调
-                            showButton('确定', 'btn-success mt-2', onSuccess);
+                            // 有回调时显示"确定"按钮，点击后执行回调
+                            // 传递 result 对象，使调用方可以检查 restart_required 等状态
+                            showButton('确定', 'btn-success mt-2', function() {
+                                onSuccess(s.result);
+                            });
                         }
                         // 无回调时不自动关闭，用户通过右上角 X 按钮手动关闭
                     } else {

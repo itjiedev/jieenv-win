@@ -11,16 +11,14 @@ layui.use(function(){
 
     util.on('lay-on', {
         uninstall: function(){
-            var tip = '确定要开始卸载 DBeaver 吗？';
-            {% if dbeaver.installType == 'zip' %}
-            tip = '即将删除 DBeaver 便携版目录：<b>' +
-                '{{ dbeaver.InstallLocation }}' + '</b><br>目录内所有文件将被永久删除，无法恢复！<br>确定继续吗？';
-            {% else %}
-            tip = '卸载程序弹出后请按提示操作。卸载完成后可回到 devtools 首页确认状态。<br>确定开始卸载吗？';
-            {% endif %}
+            var purgeData = $('#purge-data').prop('checked');
+            var tip = '卸载程序弹出后请按提示操作。卸载完成后可回到 devtools 首页确认状态。<br>确定开始卸载吗？';
+            if (purgeData) {
+                tip = '将在卸载完成后一并删除 DBeaver 用户数据目录 <code>%APPDATA%\\DBeaverData</code><br>（包含连接记录、配置、脚本、驱动缓存），操作不可恢复！<br><br>确定开始卸载吗？';
+            }
             layer.confirm(tip, {icon: 3, title: '卸载确认'}, function(index){
                 layer.close(index);
-                $.post('{% url "devtools:api_dbeaver_uninstall" %}', {}).done(function (res) {
+                $.post('{% url "devtools:api_dbeaver_uninstall" %}', {purge_data: purgeData ? '1' : '0'}).done(function (res) {
                     if (!res || !res.success) {
                         layer.msg((res && res.message) || '启动卸载失败', {icon: 2, time: 4000});
                         return;
@@ -71,18 +69,18 @@ layui.use(function(){
     </div>
 <form method="post" class="layui-form">{% csrf_token %}
     <div class="card-body">
-        {% if dbeaver.installType == 'zip' %}
-        <div class="alert alert-warning">
-            <i class="fa fa-exclamation-triangle"></i> 便携版将直接删除安装目录，操作不可撤销！
-        </div>
-        <p class="mb-1">{{ dbeaver.DisplayName }}（{{ dbeaver.installTypeLabel }}）</p>
-        <p>安装目录：<code>{{ dbeaver.InstallLocation }}</code></p>
-        {% else %}
         <p class="mb-1">{{ dbeaver.DisplayName }}（{{ dbeaver.installTypeLabel }}）将从以下文件夹中卸载</p>
         <p>{{ dbeaver.InstallLocation }}</p>
         <p class="text-danger text-bold">请确保 DBeaver 没有在启动状态。点击卸载将启动 DBeaver 的卸载程序~</p>
         <p class="text-primary text-bold">请根据弹出的卸载程序指引卸载~~</p>
-        {% endif %}
+        <div class="custom-control custom-checkbox mt-3">
+            <input type="checkbox" class="custom-control-input" id="purge-data">
+            <label class="custom-control-label text-danger" for="purge-data"><b>完全删除用户数据</b></label>
+            <div class="text-danger small ml-4 mt-1">
+                卸载完成后将删除 DBeaver 用户数据目录 <code>%APPDATA%\DBeaverData</code><br>
+                包含所有连接记录、配置、脚本、驱动缓存，删除后无法恢复。
+            </div>
+        </div>
     </div>
     <div class="card-footer">
         <button type="button" class="btn btn-danger" lay-on="uninstall">卸载</button>

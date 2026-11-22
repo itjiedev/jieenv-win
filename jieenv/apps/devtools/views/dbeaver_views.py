@@ -3,6 +3,7 @@ import json
 import time
 import logging
 import pathlib
+import shutil
 import subprocess
 
 from django.urls import reverse
@@ -18,9 +19,9 @@ from jiecore import tasks
 from apps.devtools.views import DevtoolsMixin
 from apps.devtools.services.dbeaver.installer import (
     get_dbeaver_options, get_dbeaver_latest_all,
-    download_dbeaver, run_silent_install_exe, run_extract_zip,
+    download_dbeaver, run_silent_install_exe,
     default_install_dir, dbeaver_detect_installed,
-    _find_dbeaver_exe, _register_zip_install, _unregister_install,
+    _find_dbeaver_exe, _unregister_install,
     INSTALLER_LABELS as DBEAVER_INSTALLER_LABELS,
     DBeaverError,
 )
@@ -111,7 +112,7 @@ class DbeaverInstallView(DevtoolsMixin, TemplateView):
             context['latest'] = {}
             context['latest_error'] = str(e)
         context['installer_labels'] = DBEAVER_INSTALLER_LABELS
-        context['selected_installer_type'] = selected_type if selected_type in ('exe', 'zip') else 'exe'
+        context['selected_installer_type'] = 'exe'
         context['default_install_dir'] = default_install_dir(context['selected_installer_type'])
         context['dbeaver'] = get_dbeaver_options()
         return context
@@ -150,11 +151,9 @@ def api_dbeaver_install(request):
     if get_dbeaver_options():
         return JsonResponse({'success': False,
                              'message': 'DBeaver 已安装，不支持重装；如需重装请先卸载后再安装'})
-    installer_type = (request.POST.get('installer_type') or 'exe').strip()
+    installer_type = 'exe'
     install_dir = (request.POST.get('install_dir') or '').strip()
     mirror_key = (request.POST.get('mirror_key') or '').strip()
-    if installer_type not in ('exe', 'zip'):
-        return JsonResponse({'success': False, 'message': f'未知的 installer 类型: {installer_type}'})
     if not install_dir:
         return JsonResponse({'success': False, 'message': '请指定安装目录'})
 
@@ -235,16 +234,6 @@ def _run_install_dbeaver(task: dict, installer_type: str, download_urls: list[st
         if code != 0:
             task['result'] = {'success': False, 'message': f'DBeaver 安装异常，退出码 {code}'}
             raise RuntimeError(f'DBeaver 安装异常，退出码 {code}')
-    else:
-        try:
-            run_extract_zip(pkg_path, install_dir, on_progress=on_step)
-        except DBeaverError as e:
-            task['result'] = {'success': False, 'message': str(e)}
-            raise
-        try:
-            _register_zip_install(install_dir, version)
-        except Exception as e:
-            logger.warning('注册 zip 安装信息失败: %s', e)
 
     on_step('DBeaver 安装完成。')
     tasks.set_progress(task, progress=100, stage='安装成功')
@@ -310,18 +299,7 @@ def api_dbeaver_uninstall(request):
     if not dbeaver:
         return JsonResponse({'success': False, 'message': '未检测到已安装的 DBeaver'})
 
-    install_type = dbeaver.get('installType', 'exe')
-    install_dir = dbeaver.get('InstallLocation', '')
-
-    if install_type == 'zip':
-        if not install_dir or not os.path.exists(install_dir):
-            return JsonResponse({'success': False, 'message': f'安装目录不存在: {install_dir}'})
-        task = tasks.create_task('uninstall_dbeaver',
-                                 meta={'install_dir': install_dir, 'install_type': 'zip'},
-                                 title=f'卸载 DBeaver')
-        tasks.append_log(task, f'便携版卸载：将删除安装目录 {install_dir}')
-        tasks.run_in_thread(task, _run_uninstall_dbeaver_zip, install_dir)
-        return JsonResponse({'success': True, 'task_id': task['task_id']})
+    purge_data = request.POST.get('purge_data', '0') == '1'
 
     uninstall_cmd = (dbeaver.get('UninstallString') or '').strip()
     if not uninstall_cmd:
@@ -332,7 +310,7 @@ def api_dbeaver_uninstall(request):
         return JsonResponse({'success': False,
                              'message': f'卸载程序不存在: {exe or uninstall_cmd}'})
 
-    task = tasks.create_task('uninstall_dbeaver', meta={'exe': exe},
+    task = tasks.create_task('uninstall_dbeaver', meta={'exe': exe, 'purge_data': purge_data},
                              title=f'卸载 {dbeaver.get("DisplayName", "DBeaver")}')
     tasks.append_log(task, f'卸载任务已创建: {exe}')
     tasks.run_in_thread(task, _run_uninstall_dbeaver_exe, exe, args)
@@ -343,6 +321,8 @@ def _run_uninstall_dbeaver_exe(task: dict, exe_path: str, args: str):
     def on_step(message):
         tasks.append_log(task, message)
         tasks.set_progress(task, stage=message)
+
+    purge_data = bool(task.get('meta', {}).get('purge_data'))
 
     on_step('正在以管理员权限启动 DBeaver 卸载程序...')
     on_step('若弹出 UAC 对话框，请点击"是"授权。')
@@ -356,7 +336,7 @@ def _run_uninstall_dbeaver_exe(task: dict, exe_path: str, args: str):
         raise
     except TimeoutError:
         on_step('卸载程序已拉起，请在弹出的卸载向导中完成操作。')
-        _wait_until_dbeaver_uninstalled(task, on_step)
+        _wait_until_dbeaver_uninstalled(task, on_step, purge_data)
         return
     except OSError as e:
         task['result'] = {'success': False, 'message': f'提权启动卸载程序失败: {e}'}
@@ -367,29 +347,10 @@ def _run_uninstall_dbeaver_exe(task: dict, exe_path: str, args: str):
         raise RuntimeError(f'卸载程序启动异常，退出码 {code}')
 
     on_step('卸载程序已启动，请在弹出的卸载向导中按提示完成卸载。')
-    _wait_until_dbeaver_uninstalled(task, on_step)
+    _wait_until_dbeaver_uninstalled(task, on_step, purge_data)
 
 
-def _run_uninstall_dbeaver_zip(task: dict, install_dir: str):
-    def on_step(message):
-        tasks.append_log(task, message)
-        tasks.set_progress(task, stage=message)
-
-    import shutil
-    on_step(f'正在删除便携版目录: {install_dir}')
-    try:
-        shutil.rmtree(install_dir)
-    except OSError as e:
-        task['result'] = {'success': False, 'message': f'删除目录失败: {e}'}
-        raise
-    _unregister_install()
-    on_step('DBeaver 便携版卸载完成。')
-    tasks.set_progress(task, progress=100, stage='卸载完成')
-    task['result'] = {'success': True, 'message': 'DBeaver 卸载完成'}
-    log_operation('devtools', '卸载 DBeaver', detail=f'删除目录 {install_dir}')
-
-
-def _wait_until_dbeaver_uninstalled(task: dict, on_step):
+def _wait_until_dbeaver_uninstalled(task: dict, on_step, purge_data: bool = False):
     waited = 0
     next_hint = 30
     while waited < _DBEAVER_UNINSTALL_WAIT_TIMEOUT:
@@ -397,6 +358,8 @@ def _wait_until_dbeaver_uninstalled(task: dict, on_step):
         waited += _DBEAVER_UNINSTALL_WAIT_INTERVAL
         if not dbeaver_detect_installed():
             on_step('检测到 DBeaver 已从系统中移除，卸载完成。')
+            if purge_data:
+                _purge_dbeaver_user_data(on_step)
             tasks.set_progress(task, progress=100, stage='卸载完成')
             task['result'] = {'success': True, 'message': 'DBeaver 卸载完成'}
             log_operation('devtools', '卸载 DBeaver', detail=f'等待 {waited} 秒后检测到已卸载')
@@ -409,6 +372,43 @@ def _wait_until_dbeaver_uninstalled(task: dict, on_step):
     tasks.set_progress(task, progress=100, stage='等待卸载完成超时')
     task['result'] = {'success': False, 'message': '等待卸载完成超时，请手动确认 DBeaver 是否已卸载'}
     raise RuntimeError('等待 DBeaver 卸载完成超时')
+
+
+def _purge_dbeaver_user_data(on_step=None):
+    appdata = os.environ.get('APPDATA', '')
+    data_dir = os.path.join(appdata, 'DBeaverData') if appdata else ''
+    def _log(msg):
+        if on_step:
+            on_step(msg)
+    if not data_dir or not os.path.isdir(data_dir):
+        _log('用户数据目录不存在，跳过清理。')
+        return True, '用户数据目录不存在，跳过清理。'
+    _log(f'正在清理用户数据目录: {data_dir}')
+    try:
+        shutil.rmtree(data_dir, ignore_errors=True)
+    except Exception as e:
+        msg = f'清理时出现异常: {e}（部分文件可能被占用）'
+        _log(msg)
+        return False, msg
+    if not os.path.exists(data_dir):
+        _log('用户数据目录已清理。')
+        log_operation('devtools', '清理 DBeaver 用户数据', detail=data_dir)
+        return True, '用户数据已清理，下次启动 DBeaver 将恢复默认设置。'
+    else:
+        msg = '清理完成，但部分文件可能被占用未能删除。'
+        _log(msg)
+        return False, msg
+
+
+@require_POST
+def api_dbeaver_reset(request):
+    dbeaver = get_dbeaver_options()
+    if not dbeaver:
+        return JsonResponse({'code': 500, 'msg': '没有找到 DBeaver 安装信息！'})
+    success, message = _purge_dbeaver_user_data()
+    if success:
+        return JsonResponse({'code': 0, 'msg': message})
+    return JsonResponse({'code': 500, 'msg': message})
 
 
 @require_GET

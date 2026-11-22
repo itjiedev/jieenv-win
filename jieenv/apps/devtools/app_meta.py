@@ -1,7 +1,7 @@
 meta = {
     'app_name': 'devtools',
     'display_name': '开发工具管理',
-    'version': '1.1.0',
+    'version': '1.2.0',
     'description': '开发工具统一管理平台，支持 IDE、数据库管理、API 工具等的安装、卸载、配置',
     'is_root': False,
     'is_enabled': True,

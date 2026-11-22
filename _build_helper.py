@@ -165,6 +165,7 @@ def scan_platform_items_for_staging() -> dict:
         'port_config.py',
         'requirements.txt',
         'upgrade_platform.py', '_build_helper.py',
+        'jieenv/manage.py',
     ):
         if (SCRIPT_DIR / fname).exists():
             items[fname] = fname

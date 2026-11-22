@@ -65,21 +65,21 @@ layui.use(['layer', 'jquery', 'util'], function () {
                 layer.msg('请填写安装目录', {icon: 2, time: 3000});
                 return;
             }
-            var installerType = $('input[name="dbeaver_installer"]:checked').val() || 'exe';
-            var installerLabel = $('input[name="dbeaver_installer"]:checked').attr('data-label') || installerType;
-            var productVersion = $('input[name="dbeaver_installer"]:checked').attr('data-version') || '最新版';
-            var supportsUpdate = $('input[name="dbeaver_installer"]:checked').attr('data-supports-update') === 'true';
+            var installerType = 'exe';
+            var installerLabel = 'Installer（安装版）';
+            var productVersion = '{% if latest.exe %}{{ latest.exe.productVersion }}{% else %}最新版{% endif %}';
+            var supportsUpdate = true;
             var mirrorKey = $('#dbeaver-mirror-select').val() || '';
             var mirrorLabel = $('#dbeaver-mirror-select option:selected').text();
 
-            var updateMsg = supportsUpdate ? '（支持自动更新）' : '（不支持自动更新，后续升级需手动下载替换）';
+            var updateMsg = supportsUpdate ? '（支持自动更新）' : '';
 
             layer.confirm(
                 '即将下载并静默安装 <b>DBeaver Community ' + productVersion + '</b>' +
                 '（' + installerLabel + updateMsg + '）到：<br>' +
                 '<span class="text-primary">' + installDir + '</span><br>' +
                 (mirrorLabel ? '<span class="text-muted small">下载源：' + mirrorLabel + '</span><br>' : '') +
-                (installerType === 'exe' ? '安装时可能会申请管理员权限（UAC），安装时请勿关闭界面！' : '便携版将直接解压到目标目录，无需管理员权限。') + '<br>' +
+                '安装时可能会申请管理员权限（UAC），安装时请勿关闭界面！<br>' +
                 '安装即表示同意官方许可条款，确定继续吗？',
                 {icon: 3, title: '确认安装'}, function (index) {
                 layer.close(index);
@@ -149,32 +149,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
 
             <div class="form-group row">
                 <label class="col-sm-3 col-form-label">版本</label>
-                <div class="col-sm-9 text-bold">{% if latest.exe %}{{ latest.exe.productVersion }}{% elif latest.zip %}{{ latest.zip.productVersion }}{% endif %}</div>
-                <label class="col-sm-3 col-form-label">安装类型</label>
-                <div class="col-sm-9">
-                    <div class="custom-control custom-radio">
-                        <input type="radio" id="dbeaver-installer-exe"
-                               name="dbeaver_installer" value="exe"
-                               {% if selected_installer_type == 'exe' %}checked{% endif %}
-                               data-label="{{ installer_labels.exe }}"
-                               data-version="{% if latest.exe %}{{ latest.exe.productVersion }}{% endif %}"
-                               data-supports-update="true"
-                        >
-                        <label for="dbeaver-installer-exe">{{ installer_labels.exe }}</label>
-                        <div class="text-muted small">安装器，支持自动更新，安装时需管理员权限（UAC）。</div>
-                    </div>
-                    <div class="custom-control custom-radio mt-2">
-                        <input type="radio" id="dbeaver-installer-zip"
-                               name="dbeaver_installer" value="zip"
-                               {% if selected_installer_type == 'zip' %}checked{% endif %}
-                               data-label="{{ installer_labels.zip }}"
-                               data-version="{% if latest.zip %}{{ latest.zip.productVersion }}{% endif %}"
-                               data-supports-update="false"
-                        >
-                        <label for="dbeaver-installer-zip">{{ installer_labels.zip }}</label>
-                        <div class="text-muted small">便携版，解压即用无需安装；但不支持自动更新，升级需手动下载替换。</div>
-                    </div>
-                </div>
+                <div class="col-sm-9 text-bold">{% if latest.exe %}{{ latest.exe.productVersion }}{% endif %}</div>
             </div>
 
             <div class="form-group row">
@@ -205,7 +180,7 @@ layui.use(['layer', 'jquery', 'util'], function () {
                         </div>
                     </div>
                     <div id="install-dir-hint" style="margin-top: 4px;"></div>
-                    <small class="form-text text-muted">exe 版静默安装到此目录；zip 版解压到此目录（仅支持 Windows x64）</small>
+                    <small class="form-text text-muted">安装包将静默安装到此目录（Windows x64）</small>
                 </div>
             </div>
 <div class="alert alert-info py-2 small mb-0" role="alert">

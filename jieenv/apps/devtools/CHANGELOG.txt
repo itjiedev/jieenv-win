@@ -1,3 +1,11 @@
+v1.2.0
+- DBeaver 砍掉 zip 便携版安装分支，仅保留 exe 安装程序方式
+- installer.py：删除 INSTALLER_TYPES/INSTALLER_LABELS 中的 zip，删 run_extract_zip、_register_zip_install、detect 中 zip 恢复分支；_build_mirrors 去掉 installer_type 参数，_build_result 固定生成 exe
+- dbeaver_views.py：api_dbeaver_uninstall 新增 purge_data 参数（卸载时可选清理用户数据）；新增 api_dbeaver_reset（详情页"清理配置数据"按钮，同步清 %APPDATA%\DBeaverData）；_purge_dbeaver_user_data 改为返回 (success, message) 可复用
+- install.html / uninstall.html / detail.html：前端模板移除 zip 单选按钮和分支判断；卸载页加 purge_data checkbox 及警告文案；详情页加"清理配置数据"黄色按钮（与 PyCharm/VSCode reset 模式一致）
+- 持久化清理：dbeaver_latest_cache.json / dbeaver_installed_sources.json 中的 zip 相关条目清除
+- 修复 install.html JS 语法错误：productVersion 加引号避免 26.2.5 被 JS 当作非法数字字面量
+----------------------------------------------------------------------
 v1.1.0
 - 新应用 devtools 完成，开发工具统一管理平台
 - 架构：services/{tool_id}/ 自动包扫描 + provider_catalog 双注册

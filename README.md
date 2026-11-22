@@ -50,22 +50,30 @@
 
 | 文件名 | 说明 |
 |---|---|
-| `JieEnv-v1.53.0-full-setup.exe` | 全量安装包（安装程序，双击自动安装） |
-| `JieEnv-v1.53.0-full-portable.zip` | 全量压缩包（对 exe 不放心的用户备选，解压后自行运行 `install.bat` 初始化） |
+| `JieEnv-v1.54.0-full-setup.exe` | 全量安装包（安装程序，双击自动安装，可通过系统卸载） |
 
 ### 平台包（仅含平台固定应用，不含扩展）
 
 | 文件名 | 说明 |
 |---|---|
-| `JieEnv-platform-v1.53.0.zip` | 平台压缩包（对 exe 不放心的用户备选，解压后自行运行 `installplatform.bat` 初始化，无扩展应用） |
-| `JieEnv-platform-v1.53.0-install.exe` | 平台安装包（安装程序自动安装，无扩展应用） |
+| `JieEnv-platform-v1.54.0-install.exe` | 平台安装包（安装程序自动安装，无扩展应用） |
 
 ### 升级包（已安装用户，推荐）
 
 | 文件名 | 说明 |
 |---|---|
-| `JieEnv-upgrade-1.53.0.exe` | 全量守卫升级包，自动更新所有已安装的应用版本，未安装的跳过不硬塞 |
-| `JieEnv-platform-v1.53.0-upgrade.exe` | 仅骨架升级包，省流量 |
+| `JieEnv-upgrade-1.54.0.exe` | 全量守卫升级包，自动更新所有已安装的应用版本，未安装的跳过不硬塞（双击独立运行，不依赖 Django 进程） |
+| `platform-1.54.0.zip` | 骨架升级包，**在软件内右上角升级功能中使用**，仅更新框架核心，省流量，不走 exe |
+| `JieEnv-platform-v1.54.0-upgrade.exe` | 骨架升级包（exe 形式），关闭软件后使用，仅更新框架核心，省流量，双击独立运行 |
+
+**使用场景说明：**
+
+| 场景 | 选哪个 |
+|------|--------|
+| 软件能正常打开，想一键更新所有内容（框架 + 已安装的所有应用） | `JieEnv-upgrade-1.54.0.exe` |
+| 软件打不开（白屏、启动报错等），升级程序独立运行不依赖 Django | `JieEnv-upgrade-1.54.0.exe` |
+| 软件能正常打开，想在界面内点击更新平台，不想跑 exe | `platform-1.54.0.zip` |
+| 只想更新框架核心，省流量，省心，用 exe 形式 | `JieEnv-platform-v1.54.0-upgrade.exe` |
 
 ### 插件应用（独立打包，按需安装）
 
@@ -76,7 +84,7 @@
 | `python_archive-1.8.0.zip` | Python 独立版本环境管理（便携版，不写注册表） |
 | `conda-1.2.7.zip` | Conda 环境安装和管理 |
 | `dbmysql-1.14.1.zip` | MySQL 数据库多实例管理 |
-| `devtools-1.1.0.zip` | 开发工具管理 |
+| `devtools-1.2.0.zip` | 开发工具管理 |
 
 直接下载插件应用进行安装或应用升级即可。
 
@@ -86,7 +94,7 @@
 
 ### 方式一：安装程序（推荐）
 
-下载 `JieEnv-v1.53.0-full-setup.exe`，双击运行即可完成安装。安装后可在开始菜单或桌面快捷方式启动。
+下载 `JieEnv-v1.54.0-full-setup.exe`，双击运行即可完成安装。安装后可在开始菜单或桌面快捷方式启动。
 
 安装程序会自动完成：
 - Python 运行时部署
@@ -97,12 +105,13 @@
 
 ### 方式二：便携包
 
-下载 `JieEnv-v1.53.0-full-portable.zip`（对 exe 不放心的用户备选），解压后自行运行 `install.bat` 初始化（实际操作与安装程序一样）：
+下载 `JieEnv-v1.54.0-full-portable.zip`（对 exe 不放心的用户备选），解压后自行运行初始化脚本：
 
 ```
 1. 解压到任意目录（如 D:\JieEnv-win）
-2. 双击 install.bat         # 首次初始化
-3. 双击桌面快捷方式         # 启动桌面模式
+2. 双击 install.bat           # 标准安装（写入注册表，支持卸载面板）
+   或 installportable.bat      # 便携版（不写注册表，直接删目录即可卸载）
+3. 双击桌面快捷方式           # 启动桌面模式
 ```
 
 ---

@@ -560,8 +560,7 @@ def upgrade_from_zip(app_name: str, zip_path: str, progress_cb=None) -> dict:
             from .menu_aggregator import refresh_menu_cache
             refresh_menu_cache()
             pip_installed = pip_result['installed']
-            restart_required = models_changed or not url_ok or bool(pip_installed)
-            restart_required = restart_required or is_framework
+            restart_required = True
 
             message = f'应用 {app_name} 已升级至 {new_version}'
             if pip_installed:

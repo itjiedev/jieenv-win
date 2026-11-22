@@ -16,6 +16,7 @@ from apps.devtools.views.dbeaver_views import (
     DbeaverVersionsView, DbeaverInstallView, DbeaverDetailView, DbeaverUninstallView,
     api_dbeaver_install, api_dbeaver_uninstall, api_start_dbeaver,
     api_dbeaver_info_refresh, api_fetch_dbeaver_latest, api_dbeaver_check_dir,
+    api_dbeaver_reset,
 )
 
 app_name = 'devtools'
@@ -63,6 +64,7 @@ urlpatterns = [
     path('api/dbeaver/install/', api_dbeaver_install, name='api_dbeaver_install'),
     path('api/dbeaver/uninstall/', api_dbeaver_uninstall, name='api_dbeaver_uninstall'),
     path('api/dbeaver/check-dir/', api_dbeaver_check_dir, name='api_dbeaver_check_dir'),
+    path('api/dbeaver/reset/', api_dbeaver_reset, name='api_dbeaver_reset'),
 
     path('api/cleanup_downloads/', api_cleanup_downloads, name='api_cleanup_downloads'),
 ]

@@ -15,7 +15,8 @@ v1.12.3
     setup（创建库）阶段 password 必填，verify/delete/health/preflight 阶段 password 非必填
   · provider_services.verify_database / delete_database 签名添加 password="" 默认值，
     兼容 health_check 等不传密码的调用场景
--------------------------------------------------------------------------v1.12.2
+-------------------------------------------------------------------------
+v1.12.2
 - 批量修正 31 处无效 layer.load 调用：layui 原生 layer.load 不支持 text 参数，
   dbmysql 1.12.0 批量加的 31 处 layer.load(2, {shade, text:'...'}) 里的 text 从来没有显示过，
   全部改为 layer.msg('文字', {icon:16, shade:[0.3,'#000'], time:0}) — 转圈 + 文字 + 暗色遮罩，

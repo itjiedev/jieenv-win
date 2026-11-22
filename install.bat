@@ -19,8 +19,8 @@ if not exist "runtime\python.exe" (
     exit /b 1
 )
 
-:: -- 步骤 1/4：初始化项目结构 --
-echo [1/4] 初始化项目结构（创建目录、迁移数据库）...
+:: -- 步骤 1/5：初始化项目结构 --
+echo [1/5] 初始化项目结构（创建目录、迁移数据库）...
 echo.
 runtime\python.exe jieenv\manage.py jieinit --skip-config
 if errorlevel 1 (
@@ -32,7 +32,9 @@ echo.
 echo       项目结构初始化完成。
 echo.
 
-echo [2/4] 注册必须应用...
+
+:: -- 步骤 2/5：注册必须应用 --
+echo [2/5] 注册必须应用...
 echo.
 runtime\python.exe jieenv\manage.py appinstall --path apps.mainapp
 runtime\python.exe jieenv\manage.py appinstall --path apps.appmanage
@@ -42,6 +44,7 @@ runtime\python.exe jieenv\manage.py appinstall --path apps.python_archive
 runtime\python.exe jieenv\manage.py appinstall --path apps.python_installer
 runtime\python.exe jieenv\manage.py appinstall --path apps.dbmysql
 runtime\python.exe jieenv\manage.py appinstall --path apps.conda
+runtime\python.exe jieenv\manage.py appinstall --path apps.devtools
 runtime\python.exe jieenv\manage.py refreshcache
 if errorlevel 1 (
     echo.
@@ -53,13 +56,13 @@ echo       必须应用注册完成。
 echo.
 
 
-:: -- 步骤 2/4：刷新端口 --
-echo [3/4] 分配服务端口...
+:: -- 步骤 3/5：刷新端口 --
+echo [3/5] 分配服务端口...
 call refreshport.bat
 echo.
 
-:: -- 步骤 3/4：创建桌面快捷方式 --
-echo [4/4] 创建桌面快捷方式...
+:: -- 步骤 4/5：创建桌面快捷方式 --
+echo [4/5] 创建桌面快捷方式...
 runtime\python.exe create_shortcut.py "%~dp0"
 if errorlevel 1 (
     echo       桌面快捷方式创建失败（可手动创建 run_desktop.bat 的快捷方式）。
@@ -68,7 +71,7 @@ if errorlevel 1 (
 )
 echo.
 
-:: -- 步骤 4/4：注册到 Windows 卸载面板 --
+:: -- 步骤 5/5：注册到 Windows 卸载面板 --
 echo [5/5] 注册到系统卸载面板...
 set "UNINSTALL_KEY=HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\JieEnv-win"
 set "INSTALL_DIR=%~dp0"
