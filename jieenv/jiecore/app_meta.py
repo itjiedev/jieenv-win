@@ -1,7 +1,7 @@
 meta = {
     'app_name': 'jiecore',
     'display_name': '核心框架',
-    'version': '1.41.0',
+    'version': '1.42.0',
      "is_platform_fixed": True,
     "is_enabled": True,
     'is_root': False,

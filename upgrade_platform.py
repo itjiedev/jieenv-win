@@ -144,7 +144,7 @@ def _run_upgrade_hook(app_name: str, old_version: str, new_version: str) -> None
 
 
 def _decode_out(result: subprocess.CompletedProcess) -> str:
-    out = ((result.stdout or b'') + b'\n' + (result.stderr or b'')).decode(_CMD_ENC, errors='replace')
+    out = ((result.stdout or b'') + b'\n' + (result.stderr or b'')).decode('utf-8', errors='replace')
     return out.strip()
 
 

@@ -33,7 +33,7 @@ def on_enable(context):
                      "required": True, "default": "root"},
                     {"key": "password", "label": "密码", "type": "password",
                      "required": True, "sensitive": True,
-                     "hint": "用于登录 MySQL 自动创建数据库，留空则跳过自动建库"},
+                     "hint": "密码仅用于创建数据库，不会保存，创建失败需重新输入"},
                 ],
             },
             "verify": {

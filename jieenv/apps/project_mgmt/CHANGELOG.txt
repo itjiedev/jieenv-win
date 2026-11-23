@@ -1,3 +1,15 @@
+v1.2.0
+- 创建向导交互改版（2026-11-22）：
+  · create_binding_item.html 去掉编辑按钮 + mode-summary，
+    mode-form 默认显示，避免 summary 模式下 db_name 无法同步、密码无法直接输入
+  · create.html refreshSummary 选择器转义 provider_key 中的 `.`（如 db.mysql），
+    修复 jQuery Sizzle 把点号当 class 选择器导致永远匹配不到隐藏 input 的 bug
+  · project_name / dir_slug 变化时，default-from 同步后主动 trigger('input change')，
+    让 dbmysql embed 的 check_db_exists / verify 自动触发探测
+  · restoreWizardState 恢复 localStorage 持久化状态后同样 trigger('input change')
+  · localStorage 天然不存 bindings 表单值（只存 project_name/dir_slug/base_dir），
+    密码不在浏览器持久化，创建失败用户需重新输入
+-------------------------------------------------------------------------
 v1.1.1
 - Django startproject args 修复为 `startproject {PROJECT_SUB_DIR} .`：
   第二个参数用 `.` 指向 cwd（project_dir），Django 平铺 manage.py 到根目录，

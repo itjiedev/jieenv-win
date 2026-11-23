@@ -1,3 +1,7 @@
+v1.54.1
+- jiecore v1.42.0：启动时序竞态修复——Django ready() 按序执行导致聚合层 provider 注册时 contributor 未就绪，健康状态误判锁死。修复方案：Timer(3.0, daemon=True) 延迟刷新 + UNKNOWN 初始态不拦截 + install_from_path/zip 补 reload_app_services
+- mainapp v1.3.8：platform_version 升级至 1.54.1
+----------------------------------------
 v1.54.0
 - devtools v1.2.0：DBeaver 砍掉 zip 便携版，仅保留 exe 安装程序；新增卸载时可选清理用户数据（purge_data）；新增详情页"清理配置数据"按钮恢复默认设置；修复 install.html JS 语法错误
 - 修复安装后随机端口不生效：refreshport.bat LF→CRLF 行尾修复（Windows cmd 解析 bat 必须 CRLF，纯 LF 导致脚本静默失败）

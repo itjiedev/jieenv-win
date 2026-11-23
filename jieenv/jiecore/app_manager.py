@@ -486,7 +486,7 @@ class AppManager:
             _cb('热加载应用到 Django...', progress=80, stage='热加载')
             from .hot_reload import activate_app
             pip_installed = pip_result['installed']
-            restart_required = True
+            restart_required = not activate_app(app_name) or bool(pip_installed)
             _cb('热加载完成', progress=85)
 
             _cb('刷新菜单缓存...', progress=90, stage='刷新缓存')
@@ -495,6 +495,9 @@ class AppManager:
 
             from .ext_hook_registry import load_app_ext_hooks
             load_app_ext_hooks(app_name)
+
+            from .app_services import reload_app_services
+            reload_app_services(app_name)
 
             message = f'应用 {app_name} {step}成功'
             if pip_installed:
@@ -633,7 +636,7 @@ class AppManager:
             _cb('热加载应用到 Django...', progress=85, stage='热加载')
             from .hot_reload import activate_app
             pip_installed = pip_result['installed']
-            restart_required = True
+            restart_required = not activate_app(app_name) or bool(pip_installed)
             _cb('热加载完成', progress=90)
 
             # 刷新菜单缓存
@@ -643,6 +646,9 @@ class AppManager:
 
             from .ext_hook_registry import load_app_ext_hooks
             load_app_ext_hooks(app_name)
+
+            from .app_services import reload_app_services
+            reload_app_services(app_name)
 
             message = f'应用 {app_name} 安装成功'
             if pip_installed:

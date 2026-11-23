@@ -248,6 +248,19 @@
             updateProjectDir();
             validateSlug();
         }
+        if (state.project_name) {
+            $('input[data-default-from="project_name"]').each(function() {
+                $(this).val(state.project_name).trigger('input change');
+            });
+        }
+        if (state.dir_slug) {
+            $('input[data-default-from="dir_slug"]').each(function() {
+                $(this).val(state.dir_slug).trigger('input change');
+            });
+        }
+        if (restored) {
+            refreshSummary();
+        }
         return restored;
     }
 
@@ -496,6 +509,7 @@
                     bindEditToggle();
                     bindLangPackagesEdit();
                     bindEnableButtons();
+                    bindSummaryInlineSync();
                     var restored = restoreWizardState();
                     updateProjectDir();
                     scheduleDirCheck();
@@ -711,10 +725,9 @@
                 var ftype = $sv.data('field-type') || '';
                 var uiw = $sv.data('ui-widget') || '';
                 var required = $sv.attr('data-required') === '1';
-                var $input = $c.find('[name="config_' + pk + '_' + fk + '"]');
+                var escapedName = ('config_' + pk + '_' + fk).replace(/[.#[\]:]/g, '\\$&');
+                var $input = $c.find('[name="' + escapedName + '"]');
                 var isEmpty = false;
-
-                console.log('[refreshSummary]', pk, fk, 'required=', required, 'type=', ftype, 'inputVal=', $input.val());
 
                 if (uiw === 'dir_with_base') {
                     var $dirBox = $c.find('.dir-with-base[data-field="' + fk + '"]');
@@ -747,15 +760,20 @@
                     } else {
                         $sv.html('<span class="font-weight-bold">' + escapeHtml(label) + '</span>');
                     }
-                } else if (ftype === 'password') {
-                    var pv = ($input.val() || '').trim();
-                    isEmpty = !pv;
-                    if (isEmpty && required) {
-                        $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
-                    } else if (isEmpty) {
-                        $sv.html('<span class="text-muted">未设置</span>');
+                } else if (ftype === 'password' || ftype === 'text') {
+                    var vv = ($input.val() || '').trim();
+                    isEmpty = !vv;
+                    var $inlineInput = $sv.find('input[data-summary-inline="1"]');
+                    if ($inlineInput.length) {
+                        if ($inlineInput.val() !== vv) {
+                            $inlineInput.val(vv);
+                        }
                     } else {
-                        $sv.html('••••••');
+                        if (isEmpty && required) {
+                            $sv.html('<span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>');
+                        } else {
+                            $sv.html('<span class="font-weight-bold">' + escapeHtml(vv || '—') + '</span>');
+                        }
                     }
                 } else {
                     var tv = ($input.val() || '').trim();
@@ -766,8 +784,6 @@
                         $sv.html('<span class="font-weight-bold">' + escapeHtml(tv || '—') + '</span>');
                     }
                 }
-
-                console.log('[refreshSummary] →', pk, fk, 'isEmpty=', isEmpty, 'result_state=', required && isEmpty ? 'warn' : 'ok');
 
                 if (required && isEmpty) {
                     $sv.attr('data-state', 'warn');
@@ -785,6 +801,21 @@
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(text));
         return div.innerHTML;
+    }
+
+    function bindSummaryInlineSync() {
+        $('#bindings-area').off('input', '.summary-value input[data-summary-inline="1"]').on('input', '.summary-value input[data-summary-inline="1"]', function() {
+            var $inline = $(this);
+            var $sv = $inline.closest('.summary-value');
+            var $row = $inline.closest('.binding-form');
+            var pk = $row.data('provider-key');
+            var fk = $sv.data('field-key');
+            var escapedName = ('config_' + pk + '_' + fk).replace(/[.#[\]:]/g, '\\$&');
+            var $hidden = $row.find('.mode-form').find('[name="' + escapedName + '"]');
+            if ($hidden.length && $hidden.val() !== $inline.val()) {
+                $hidden.val($inline.val()).trigger('input change');
+            }
+        });
     }
 
     function bindLangPackagesEdit() {
@@ -916,14 +947,15 @@
         }
         $('input[data-default-from="project_name"]').each(function() {
             if (!$(this).data('manually-edited')) {
-                $(this).val(name);
+                $(this).val(name).trigger('input change');
             }
         });
         $('input[data-default-from="dir_slug"]').each(function() {
             if (!$(this).data('manually-edited')) {
-                $(this).val($('#dir_slug').val());
+                $(this).val($('#dir_slug').val()).trigger('input change');
             }
         });
+        refreshSummary();
     });
 
     $('#bindings-area').on('input', 'input[data-default-from]', function() {
@@ -938,9 +970,10 @@
         var slug = $(this).val();
         $('input[data-default-from="dir_slug"]').each(function() {
             if (!$(this).data('manually-edited')) {
-                $(this).val(slug);
+                $(this).val(slug).trigger('input change');
             }
         });
+        refreshSummary();
     });
 
     $('#dir_slug').on('blur', function() {
@@ -1036,7 +1069,6 @@
             refreshSummary($card);
         });
         var $warns = $('#bindings-area .summary-value[data-state="warn"]');
-        console.log('[validateBindings] warn count:', $warns.length);
         $warns.each(function() {
             var $sv = $(this);
             var $row = $sv.closest('.summary-row');
@@ -1046,7 +1078,6 @@
             var $label = $row.find('.summary-label');
             var labelText = ($label.text() || '').replace(/\*/g, '').trim();
             var providerLabel = $card.find('.card-header .font-weight-bold').text().trim();
-            console.log('[validateBindings] missing:', providerLabel, '-', labelText);
             missing.push({
                 provider_key: pk,
                 provider_label: providerLabel,

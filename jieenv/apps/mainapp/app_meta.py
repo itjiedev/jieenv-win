@@ -2,7 +2,7 @@ meta = {
     'app_name': 'mainapp',
     'display_name': '主应用',
     'version': '1.3.7',
-    'platform_version': '1.54.0',
+    'platform_version': '1.55.0',
     "is_platform_fixed": True,
     "is_enabled": True,
     'is_root': True,

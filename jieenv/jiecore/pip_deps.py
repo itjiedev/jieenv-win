@@ -33,7 +33,10 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # 合法的 PyPI 包名（字母/数字开头结尾，中间允许 . _ -），用于拦截恶意包名
-PIP_NAME_RE = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$')
+PIP_NAME_RE = re.compile(
+    r'^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?'
+    r'(\[[A-Za-z0-9][A-Za-z0-9._-]*(,[A-Za-z0-9][A-Za-z0-9._-]*)*\])?$'
+)
 
 # 单次 pip install 的超时时间（秒）
 PIP_INSTALL_TIMEOUT = 600
@@ -52,9 +55,11 @@ def get_installed_version(pkg_name: str) -> str:
     查询包当前已安装的版本，未安装返回空字符串。
     使用 importlib.metadata 而非 import，避免包名与导入名不一致
     （如 Pillow -> PIL）以及导入副作用。
+    支持 extras 语法（如 psycopg[binary]），查询前自动剥掉 [extras] 后缀。
     """
+    base = pkg_name.split('[', 1)[0]
     try:
-        return importlib_metadata.version(normalize_pkg_name(pkg_name))
+        return importlib_metadata.version(normalize_pkg_name(base))
     except Exception:
         return ''
 

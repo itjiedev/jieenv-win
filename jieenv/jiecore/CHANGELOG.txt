@@ -1,3 +1,12 @@
+v1.42.0
+- provider_catalog: register_provider 健康检查从立即同步刷新改为 Timer(3.0, daemon=True) 延迟，
+  等待所有 Django AppConfig.ready() 执行完毕后再探测，解决聚合层 provider 注册时
+  contributor 应用尚未就绪导致的健康状态误判锁死问题
+- provider_catalog: _check_one 探测失败返回 UNKNOWN 而非 DEGRADED，
+  UNKNOWN 初始态不拦截 invoke_provider 调用，仅后台 30s 定时刷新持续失败才升级为 DEGRADED
+- app_manager: install_from_path / install_from_zip 补 reload_app_services(app_name) 调用，
+  与 enable_app 逻辑对齐；restart_required 从硬编码 True 改为动态计算
+----------------------------------------
 v1.41.0
 - 平台升级页面 changelog 显示优化：按分隔线切分，默认只显示最近 5 条，历史版本折叠隐藏
 - 全项目 CHANGELOG.txt 统一分隔线规范：40 个连字符（正则匹配 \n-{8,}\n? 兼容历史变体）

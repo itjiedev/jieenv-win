@@ -1,6 +1,8 @@
+v1.3.7
+- platform_version 升级至 1.53.0
+----------------------------------------
 v1.3.6
 - platform_version 升级至 1.52.0
-- jiecore_tasklog.js onSuccess 回调参数修复，使平台/应用升级能够正确等待服务重启
 ----------------------------------------
 v1.3.5
 - app_meta.py 删除废弃的 is_core=True 标记（保护语义已统一归并到 is_platform_fixed）

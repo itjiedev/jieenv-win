@@ -20,9 +20,6 @@
             <span class="badge badge-success mr-2">
                 <i class="fa-solid fa-check"></i> 已安装
             </span>
-            <button type="button" class="btn btn-sm btn-outline-primary binding-btn-edit">
-                <i class="fa-solid fa-pen-to-square"></i> <span class="btn-label">编辑</span>
-            </button>
             {% elif is_disabled %}
             <span class="badge badge-secondary">
                 <i class="fa-solid fa-pause"></i> 应用禁用
@@ -44,70 +41,7 @@
     <div class="card-body py-3">
         {% if installed and not no_options %}
 {% if config_fields %}
-<div class="mode-summary">
-    {% for field in config_fields %}
-    <div class="summary-row d-flex align-items-center py-1 border-bottom"
-         data-field-key="{{ field.key }}"
-         {% if field.key == 'use_venv' %}data-toggle-controls="venv_dir,system_site"{% endif %}>
-        <span class="summary-label text-muted small" style="min-width:110px;">
-            {{ field.label }}{% if field.required %}<span class="text-danger ml-1">*</span>{% endif %}
-        </span>
-        <span class="summary-value flex-grow-1 small"
-              data-field-key="{{ field.key }}"
-              data-field-type="{{ field.type }}"
-              data-ui-widget="{{ field.ui_widget|default:'' }}"
-              {% if field.type == 'select' and field.options %}data-options-json="{{ field.options|escapejs }}"{% endif %}
-              {% if field.type == 'checkbox' %}data-checked="{{ field.default|yesno:'true,false' }}"{% endif %}
-              {% if field.required %}data-required="1"{% endif %}
-              {% if field.ui_widget == 'dir_with_base' %}
-              data-dir-sub="{{ field.dir_sub|default:'.venv' }}"
-              data-dir-full="{{ field.default|default:'' }}"
-              {% endif %}
-              {% if field.required and not field.default %}data-state="warn"{% endif %}>
-            {% if field.type == 'select' %}
-                {% if field.default %}
-                    {% for opt in field.options %}
-                        {% if field.default == opt.value|default:opt %}
-                            {{ opt.label|default:opt }}
-                        {% endif %}
-                    {% endfor %}
-                {% elif field.required %}
-                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
-                {% else %}
-                    <span class="text-muted">—</span>
-                {% endif %}
-            {% elif field.type == 'checkbox' %}
-                {% if field.default %}
-                    <span class="text-success">使用 <i class="fa-solid fa-check"></i></span>
-                {% else %}
-                    <span class="text-muted">关闭</span>
-                {% endif %}
-            {% elif field.ui_widget == 'dir_with_base' %}
-                {% if field.required and not field.default %}
-                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
-                {% else %}
-                    <span class="font-weight-bold">{{ field.dir_sub|default:'.venv' }}</span>
-                    <small class="text-muted ml-2">{{ field.default|default:'' }}</small>
-                {% endif %}
-            {% elif field.type == 'password' %}
-                {% if field.default %}••••••{% elif field.required %}
-                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
-                {% else %}
-                    <span class="text-muted">未设置</span>
-                {% endif %}
-            {% else %}
-                {% if field.required and not field.default %}
-                    <span class="text-danger font-weight-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>必填，请编辑</span>
-                {% else %}
-                    <span class="font-weight-bold">{{ field.default|default:"—" }}</span>
-                {% endif %}
-            {% endif %}
-        </span>
-    </div>
-    {% endfor %}
-</div>
-
-<div class="mode-form" style="display:none;">
+<div class="mode-form">
 <div class="row">
     {% for field in config_fields %}
     <div class="col-md-6">

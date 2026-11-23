@@ -1,3 +1,7 @@
+v1.14.2
+- provider config_schema password 字段 hint 改为"密码仅用于创建数据库，不会保存，创建失败需重新输入"，
+  明确告知用户密码生命周期，避免误解软件在本地持久化存储用户密码
+-------------------------------------------------------------------------
 v1.14.1
 - apps.py ready() 末尾自动调 hooks.on_enable({}) 注册 db.mysql provider：
   修复 Django 重启后 provider_catalog 为空、项目创建时误判"未安装"的 bug

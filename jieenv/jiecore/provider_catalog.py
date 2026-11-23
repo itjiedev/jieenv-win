@@ -170,7 +170,7 @@ class _ProviderHealthCache:
             if isinstance(result, dict) and result.get('success'):
                 return 'OK'
             if isinstance(result, dict) and 'success' in result:
-                return 'DEGRADED'
+                return 'UNKNOWN'
             return 'OK'
         except Exception:
             return 'OK'
@@ -281,7 +281,7 @@ def register_provider(provider_def: dict) -> str:
         _PROVIDERS[provider_key] = provider_def
         _PROVIDER_APP_INDEX[provider_key] = provider_def.get('app_name', '')
 
-    _health_cache.refresh(provider_key)
+    threading.Timer(3.0, lambda: _health_cache.refresh(provider_key), daemon=True).start()
     _event_journal.append(event_bus.EVENT_PROVIDER_REGISTERED, {
         'provider_key': provider_key,
         'provider_def': provider_def,
