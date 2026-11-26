@@ -1,11 +1,13 @@
 import os
+import time
+import ctypes
 import logging
 import pathlib
 import urllib.request
 from typing import Optional
 
 from jiecore.json_storage import JsonStore
-from jiecore.system_ops import run_elevated
+from jiecore.system_ops import run_elevated, _SHELLEXECUTEINFOW, _shell32
 from jiecore.utils import format_size
 
 from apps.devtools.config import DEV_TOOLS_INSTALL_ROOT
@@ -153,6 +155,25 @@ def download_pycharm(url: str, filename: str, on_progress=None) -> pathlib.Path:
     ) from last_error
 
 
+def _scan_dir_usage(path: str) -> tuple:
+    p = pathlib.Path(path)
+    if not p.is_dir():
+        return 0, 0
+    fc = 0
+    ts = 0
+    try:
+        for entry in p.rglob('*'):
+            if entry.is_file():
+                fc += 1
+                try:
+                    ts += entry.stat().st_size
+                except OSError:
+                    pass
+    except (PermissionError, OSError):
+        pass
+    return fc, ts
+
+
 def run_silent_install(exe_path, install_dir: str, on_progress=None) -> int:
     install_dir = str(install_dir).rstrip('\\/')
     pathlib.Path(install_dir).mkdir(parents=True, exist_ok=True)
@@ -164,8 +185,66 @@ def run_silent_install(exe_path, install_dir: str, on_progress=None) -> int:
     if on_progress:
         on_progress(f'正在以管理员权限静默安装到: {install_dir}')
         on_progress('若弹出 UAC 对话框，请点击"是"授权。')
-        on_progress('安装过程可能需要几分钟，请耐心等待...')
-    return run_elevated(str(exe_path), params, _PYCHARM_INSTALL_TIMEOUT, show=0)
+
+    info = _SHELLEXECUTEINFOW()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = 0x00000040
+    info.lpVerb = 'runas'
+    info.lpFile = str(exe_path)
+    info.lpParameters = params
+    info.lpDirectory = os.environ.get('SystemRoot', r'C:\Windows')
+    info.nShow = 0
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        if hwnd:
+            info.hwnd = hwnd
+    except Exception:
+        pass
+
+    logger.info('PyCharm silent install: ShellExecuteExW(runas) file=%s, params=%s',
+                exe_path, params)
+    if not _shell32.ShellExecuteExW(ctypes.byref(info)):
+        err = ctypes.get_last_error()
+        if err == 1223:
+            raise PermissionError('用户取消了管理员权限申请（UAC 对话框）')
+        raise PythonPycharmError(f'提权静默安装启动失败（错误码 {err}）')
+
+    handle = info.hProcess
+    if not handle:
+        logger.warning('ShellExecuteExW succeeded but no process handle, skip wait')
+        return 0
+
+    if on_progress:
+        on_progress('安装程序已启动，正在等待完成...')
+
+    heartbeat_interval = 10
+    poll_interval = 3
+    elapsed = 0
+    last_heartbeat = 0
+    zero_count = 0
+    try:
+        while True:
+            wait = ctypes.windll.kernel32.WaitForSingleObject(handle, poll_interval * 1000)
+            if wait == 0:
+                code = ctypes.c_ulong()
+                ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+                return code.value
+            elapsed += poll_interval
+            if elapsed >= _PYCHARM_INSTALL_TIMEOUT:
+                raise TimeoutError(f'PyCharm 安装超时（{_PYCHARM_INSTALL_TIMEOUT} 秒）')
+            if on_progress and elapsed - last_heartbeat >= heartbeat_interval:
+                last_heartbeat = elapsed
+                fc, ts = _scan_dir_usage(install_dir)
+                if fc > 0:
+                    mb = ts / (1024 * 1024)
+                    on_progress(f'安装进行中，已落盘 {fc} 个文件 / {mb:.1f} MB（已等待 {elapsed}s）')
+                    zero_count = 0
+                else:
+                    zero_count += 1
+                    if zero_count <= 3:
+                        on_progress(f'安装进行中，正在初始化（已等待 {elapsed}s）...')
+    finally:
+        ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def pycharm_detect_installed():

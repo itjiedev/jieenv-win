@@ -1,3 +1,6 @@
+v1.2.1
+- PyCharm 修复下载被官方拒绝, 安装时配置文件缺失问题，并增加下载落盘文件进度提示
+----------------------------------------------------------------------
 v1.2.0
 - DBeaver 砍掉 zip 便携版安装分支，仅保留 exe 安装程序方式
 - installer.py：删除 INSTALLER_TYPES/INSTALLER_LABELS 中的 zip，删 run_extract_zip、_register_zip_install、detect 中 zip 恢复分支；_build_mirrors 去掉 installer_type 参数，_build_result 固定生成 exe

@@ -1,3 +1,6 @@
+v1.55.1
+- devtools v1.2.1：PyCharm 下载安装修复
+----------------------------------------------------------------------
 v1.54.1
 - jiecore v1.42.0：启动时序竞态修复——Django ready() 按序执行导致聚合层 provider 注册时 contributor 未就绪，健康状态误判锁死。修复方案：Timer(3.0, daemon=True) 延迟刷新 + UNKNOWN 初始态不拦截 + install_from_path/zip 补 reload_app_services
 - mainapp v1.3.8：platform_version 升级至 1.54.1

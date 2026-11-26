@@ -19,6 +19,9 @@ USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
 BROWSER_HEADERS = {
     'User-Agent': USER_AGENT,
     'Accept': 'application/json',
+    'Sec-Ch-Ua': '"Chromium";v="126", "Not_A Brand";v="24"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
 }
 
 FETCH_TIMEOUT = 20
