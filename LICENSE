@@ -203,16 +203,14 @@
 ---------------------------------------------------------------------------
 
 JieEnv — 项目环境管理平台
-Copyright 2026 JieSoft JieDev
+Copyright 2026 IT阿杰
 
-===========================================================================
-JIESOFT ADDITIONAL TERMS — Attribution & Anti-Misrepresentation
 ===========================================================================
 
 1. Attribution Requirement (强化 Apache Section 4(c)):
    任何分发形式（包括闭源分发、SaaS 服务、嵌入到其他产品）必须在：
    - 产品的显著位置（启动页、关于页、README 首页）声明：
-     "本产品包含 JieEnv 开源组件 © 2025 JieSoft (https://github.com/your-github/jieenv)"
+     "本产品包含 JieEnv 开源组件 © 2026 IT阿杰 (https://gitee.com/itjiedev/jieenv-win， https://github.com/itjiedev/jieenv-win)"
    - 或在相应的 NOTICE 文件中完整保留 JieEnv 的版权声明和许可证全文。
 
 2. Anti-Misrepresentation (禁止虚假陈述):
